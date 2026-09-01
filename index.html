@@ -3,973 +3,247 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>五行槍神錄 · Wuxing Gunblade</title>
+<title>五行槍神錄 3D · Wuxing Strike</title>
 <style>
   :root{
-    --metal:#ffd54a; --wood:#4ade80; --water:#38bdf8; --fire:#ff6b6b; --earth:#d4a24c;
-    --bg:#05070d;
+    --metal:#e8c84a; --wood:#4ade80; --water:#38bdf8; --fire:#ff6b5e; --earth:#c99a4e;
+    --red:#ff5a4e; --blue:#4ea1ff;
   }
   *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-user-select:none}
-  html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif;color:#e8ecf4}
-  #game{position:fixed;inset:0;display:block;cursor:crosshair}
-  .overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0a0c10;color:#e9edf3;
+    font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif}
+  #c3d{position:fixed;inset:0;display:block}
+  .overlay{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center}
   .hidden{display:none!important}
+  button{font-family:inherit;cursor:pointer}
+  input{font-family:inherit}
 
-  /* ===== 主選單 / 角色選擇 ===== */
-  #menu{background:radial-gradient(ellipse at 50% 30%,#101a2e 0%,#05070d 70%);overflow-y:auto;padding:24px}
-  .title{font-size:clamp(38px,6vw,72px);font-weight:900;letter-spacing:.18em;
+  /* ===== 大廳 ===== */
+  #lobby{background:
+    linear-gradient(rgba(6,8,12,.78),rgba(6,8,12,.92)),
+    radial-gradient(ellipse at 50% 20%,#1a2434 0%,#07090d 70%);overflow-y:auto;padding:30px 16px}
+  .gtitle{font-size:clamp(34px,5.5vw,62px);font-weight:900;letter-spacing:.16em;
     background:linear-gradient(90deg,var(--metal),var(--wood),var(--water),var(--fire),var(--earth));
-    -webkit-background-clip:text;background-clip:text;color:transparent;
-    filter:drop-shadow(0 0 24px rgba(120,180,255,.35));margin-bottom:6px;text-align:center}
-  .subtitle{color:#8fa3c0;letter-spacing:.5em;margin-bottom:26px;font-size:14px;text-align:center}
-  .cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:1280px}
-  .card{width:220px;background:linear-gradient(160deg,rgba(255,255,255,.06),rgba(255,255,255,.015));
-    border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:18px 16px;cursor:pointer;
-    transition:transform .18s,box-shadow .18s,border-color .18s;position:relative;overflow:hidden}
-  .card:hover{transform:translateY(-8px) scale(1.03)}
-  .card .glyph{font-size:52px;font-weight:900;line-height:1;margin-bottom:8px;text-shadow:0 0 22px currentColor}
-  .card h3{font-size:20px;margin-bottom:2px;letter-spacing:.1em}
-  .card .cname{font-size:12px;color:#93a7c4;margin-bottom:10px;letter-spacing:.15em}
-  .card p{font-size:12px;line-height:1.65;color:#b8c6dc}
-  .card .ult{margin-top:10px;font-size:12px;line-height:1.55;color:#fff;border-top:1px dashed rgba(255,255,255,.18);padding-top:8px}
-  .card .ult b{letter-spacing:.08em}
-  .hint{margin-top:26px;color:#7d90ad;font-size:13px;line-height:2;text-align:center}
+    -webkit-background-clip:text;background-clip:text;color:transparent;text-align:center;
+    filter:drop-shadow(0 2px 18px rgba(140,190,255,.3))}
+  .gsub{color:#8296b3;letter-spacing:.45em;font-size:13px;margin:6px 0 30px;text-align:center}
+  .panel{background:rgba(14,19,28,.85);border:1px solid rgba(255,255,255,.1);border-radius:14px;
+    padding:26px 30px;width:min(480px,94vw);backdrop-filter:blur(8px)}
+  .panel h3{font-size:15px;letter-spacing:.2em;color:#9fb2d0;margin-bottom:12px}
+  .row{display:flex;gap:10px;margin-bottom:14px}
+  .ipt{flex:1;background:#0b0f16;border:1px solid #2c3a52;border-radius:9px;color:#fff;
+    padding:12px 14px;font-size:15px;letter-spacing:.06em;outline:none}
+  .ipt:focus{border-color:#4ea1ff}
+  .btn{border:none;border-radius:9px;padding:12px 22px;font-size:15px;font-weight:700;letter-spacing:.12em;color:#fff;transition:filter .15s}
+  .btn:hover{filter:brightness(1.18)}
+  .btn.pri{background:linear-gradient(90deg,#2f7bff,#7a4dff)}
+  .btn.grn{background:linear-gradient(90deg,#159957,#1f8f6e)}
+  .btn.gld{background:linear-gradient(90deg,#a06a1f,#c98f2e)}
+  .btn.gry{background:#273248}
+  .or{color:#5b6c86;text-align:center;margin:10px 0;font-size:12px;letter-spacing:.3em}
+  .note{color:#6d80a0;font-size:12px;line-height:1.8;margin-top:16px}
   kbd{background:#1b2436;border:1px solid #33415c;border-radius:5px;padding:1px 7px;font-size:12px;color:#cfe0ff}
 
+  /* ===== 角色列 ===== */
+  #charRow{display:flex;gap:8px;margin:4px 0 16px;flex-wrap:wrap;justify-content:center}
+  .cbtn{width:82px;padding:9px 4px;border-radius:10px;border:1.5px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.04);text-align:center;transition:all .15s;color:#cfd9e8}
+  .cbtn .g{font-size:26px;font-weight:900;text-shadow:0 0 12px currentColor;font-family:serif}
+  .cbtn .n{font-size:11px;margin-top:3px;letter-spacing:.05em}
+  .cbtn.sel{background:rgba(255,255,255,.12);transform:translateY(-3px);border-color:currentColor;box-shadow:0 6px 18px -4px currentColor}
+
+  /* ===== 房間 ===== */
+  #room{background:linear-gradient(rgba(6,8,12,.82),rgba(6,8,12,.94)),radial-gradient(ellipse at 50% 20%,#1a2434 0%,#07090d 70%);overflow-y:auto;padding:24px}
+  #roomCode{font-size:38px;font-weight:900;letter-spacing:.35em;color:#ffd54a;cursor:pointer;
+    text-shadow:0 0 22px rgba(255,213,74,.45)}
+  .teams{display:flex;gap:22px;margin:22px 0;flex-wrap:wrap;justify-content:center}
+  .teamcol{width:min(330px,92vw);border-radius:14px;padding:16px;border:1px solid rgba(255,255,255,.1)}
+  .teamcol h4{letter-spacing:.25em;margin-bottom:12px;font-size:16px}
+  .slot{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.05);border-radius:9px;
+    padding:10px 13px;margin-bottom:8px;font-size:14px;min-height:44px}
+  .slot .cg{font-weight:900;font-size:19px;font-family:serif;width:24px;text-align:center}
+  .slot .tag{margin-left:auto;font-size:11px;color:#8296b3;letter-spacing:.1em}
+  .slot.empty{color:#5b6c86;font-style:italic}
+
   /* ===== HUD ===== */
-  #hud{position:fixed;inset:0;pointer-events:none;z-index:5}
-  #topbar{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:26px;align-items:center;
-    background:rgba(8,12,22,.55);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:8px 22px;backdrop-filter:blur(6px)}
-  #topbar .stat{font-size:14px;color:#aebfda;letter-spacing:.08em}
-  #topbar .stat b{color:#fff;font-size:17px}
-  #bl{position:absolute;left:18px;bottom:16px;width:300px}
-  .barwrap{background:rgba(8,12,22,.6);border:1px solid rgba(255,255,255,.12);border-radius:9px;height:20px;overflow:hidden;margin-bottom:7px;position:relative}
-  .barfill{height:100%;transition:width .15s;border-radius:8px}
-  .barlabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11.5px;letter-spacing:.12em;color:#fff;text-shadow:0 1px 3px #000}
-  #hpfill{background:linear-gradient(90deg,#ef4444,#fb923c)}
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
+  #xhair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}
+  #xhair span{position:absolute;background:#dff1ff;box-shadow:0 0 4px rgba(0,0,0,.9)}
+  #hitmark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(45deg);width:26px;height:26px;opacity:0}
+  #hitmark span{position:absolute;background:#fff;box-shadow:0 0 6px #ff5a4e}
+  #hitmark span:nth-child(1){left:0;top:0;width:9px;height:2.5px}
+  #hitmark span:nth-child(2){right:0;top:0;width:9px;height:2.5px}
+  #hitmark span:nth-child(3){left:0;bottom:0;width:9px;height:2.5px}
+  #hitmark span:nth-child(4){right:0;bottom:0;width:9px;height:2.5px}
+  #vign{position:fixed;inset:0;pointer-events:none;z-index:9;opacity:0;
+    background:radial-gradient(ellipse at center,transparent 55%,rgba(200,20,20,.55) 100%)}
+  #topbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:18px;
+    background:rgba(8,11,17,.68);border:1px solid rgba(255,255,255,.1);border-radius:11px;padding:7px 20px;backdrop-filter:blur(5px)}
+  #tRed{color:var(--red);font-weight:900;font-size:22px}
+  #tBlue{color:var(--blue);font-weight:900;font-size:22px}
+  #timer{font-size:19px;font-weight:700;letter-spacing:.08em;color:#e9edf3;font-variant-numeric:tabular-nums}
+  #killfeed{position:absolute;top:70px;right:16px;display:flex;flex-direction:column;gap:5px;align-items:flex-end}
+  .kf{background:rgba(8,11,17,.72);border:1px solid rgba(255,255,255,.08);border-radius:7px;
+    padding:4px 12px;font-size:12.5px;animation:kfin .25s ease}
+  @keyframes kfin{from{transform:translateX(30px);opacity:0}}
+  #bl{position:absolute;left:18px;bottom:16px;width:290px}
+  .barwrap{background:rgba(8,11,17,.7);border:1px solid rgba(255,255,255,.12);border-radius:8px;height:19px;overflow:hidden;margin-bottom:6px;position:relative}
+  .barfill{height:100%;transition:width .12s}
+  .barlabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;letter-spacing:.1em;color:#fff;text-shadow:0 1px 3px #000}
+  #hpfill{background:linear-gradient(90deg,#d33a2c,#f59e0b)}
   #ultfill{background:linear-gradient(90deg,#818cf8,#e879f9)}
-  #skillbox{display:flex;gap:8px;margin-top:4px}
-  .chip{background:rgba(8,12,22,.6);border:1px solid rgba(255,255,255,.14);border-radius:9px;padding:6px 12px;font-size:12px;color:#cfe0ff;letter-spacing:.06em}
-  .chip.ready{border-color:#67e8f9;box-shadow:0 0 12px rgba(103,232,249,.35);color:#fff}
-  .chip.charged{border-color:#e879f9;box-shadow:0 0 16px rgba(232,121,249,.5);color:#fff;animation:pulse 1s infinite}
-  @keyframes pulse{50%{box-shadow:0 0 26px rgba(232,121,249,.9)}}
-  #guns{position:absolute;right:18px;bottom:16px;display:flex;flex-direction:column;gap:6px}
-  .gunrow{display:flex;align-items:center;gap:10px;background:rgba(8,12,22,.55);border:1px solid rgba(255,255,255,.1);
-    border-radius:9px;padding:5px 12px;font-size:12.5px;color:#9fb2d0;min-width:190px;transition:all .15s}
-  .gunrow.active{border-color:#fff;color:#fff;background:rgba(30,42,68,.8);transform:translateX(-8px)}
-  .gunrow .key{width:18px;height:18px;border-radius:4px;background:#1b2436;border:1px solid #33415c;
-    display:flex;align-items:center;justify-content:center;font-size:11px;flex:none}
-  #elembadge{position:absolute;left:18px;top:14px;display:flex;align-items:center;gap:12px;
-    background:rgba(8,12,22,.55);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:8px 16px;backdrop-filter:blur(6px)}
-  #elembadge .g{font-size:30px;font-weight:900;text-shadow:0 0 16px currentColor}
-  #elembadge .t{font-size:12px;color:#9fb2d0;line-height:1.5}
-  #combo{position:absolute;right:22px;top:64px;font-size:26px;font-weight:900;color:#ffd54a;text-shadow:0 0 14px rgba(255,213,74,.6);opacity:0;transition:opacity .3s}
+  #chips{display:flex;gap:7px;margin-top:3px}
+  .chip{background:rgba(8,11,17,.7);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:5px 11px;font-size:11.5px;color:#cfe0ff;letter-spacing:.05em}
+  .chip.ready{border-color:#67e8f9;color:#fff;box-shadow:0 0 10px rgba(103,232,249,.3)}
+  .chip.charged{border-color:#e879f9;color:#fff;animation:pulse 1s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 22px rgba(232,121,249,.85)}}
+  #br{position:absolute;right:18px;bottom:16px;text-align:right}
+  #ammo{font-size:34px;font-weight:900;color:#fff;text-shadow:0 2px 8px #000;font-variant-numeric:tabular-nums}
+  #ammo small{font-size:16px;color:#93a7c4}
+  #gunname{font-size:13px;color:#b8c6dc;letter-spacing:.15em;margin-top:2px}
+  #elemtag{font-size:12px;letter-spacing:.1em;margin-top:4px}
+  #centerMsg{position:absolute;left:50%;top:34%;transform:translateX(-50%);font-size:clamp(20px,3vw,34px);
+    font-weight:900;letter-spacing:.3em;text-shadow:0 0 20px rgba(120,180,255,.8);opacity:0;transition:opacity .3s;text-align:center;line-height:1.6}
 
-  /* ===== 中二大招演出 ===== */
-  #ultcut{position:fixed;inset:0;z-index:20;pointer-events:none;display:flex;align-items:center;justify-content:center;opacity:0}
-  #ultcut.show{animation:cutin 2.4s ease forwards}
-  #ultcut .band{position:absolute;left:0;right:0;height:34vh;background:linear-gradient(90deg,transparent,rgba(0,0,0,.82) 15%,rgba(0,0,0,.82) 85%,transparent)}
-  #ulttext{position:relative;font-size:clamp(34px,7vw,86px);font-weight:900;letter-spacing:.22em;white-space:nowrap;
-    text-shadow:0 0 30px currentColor,0 0 60px currentColor;transform:scale(1.6)}
-  #ultsub{position:absolute;margin-top:130px;font-size:clamp(13px,1.6vw,20px);letter-spacing:.6em;color:#fff;opacity:.85}
+  /* ===== 計分板 ===== */
+  #board{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:15;
+    background:rgba(8,11,17,.92);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:22px 28px;min-width:min(620px,94vw);backdrop-filter:blur(8px)}
+  #board h2{text-align:center;letter-spacing:.3em;font-size:18px;margin-bottom:14px;color:#cfe0ff}
+  #board table{width:100%;border-collapse:collapse;font-size:13.5px}
+  #board th{color:#7d90ad;font-weight:400;letter-spacing:.15em;padding:5px 10px;text-align:left;font-size:11.5px}
+  #board td{padding:6px 10px;border-top:1px solid rgba(255,255,255,.07)}
+  #board td:nth-child(n+3){font-variant-numeric:tabular-nums}
+
+  /* ===== 大招演出 ===== */
+  #ultcut{position:fixed;inset:0;z-index:30;pointer-events:none;display:flex;align-items:center;justify-content:center;opacity:0}
+  #ultcut.show{animation:cutin 2.2s ease forwards}
+  #ultcut .band{position:absolute;left:0;right:0;height:32vh;background:linear-gradient(90deg,transparent,rgba(0,0,0,.85) 15%,rgba(0,0,0,.85) 85%,transparent)}
+  #ulttext{position:relative;font-size:clamp(30px,6vw,74px);font-weight:900;letter-spacing:.2em;white-space:nowrap;text-shadow:0 0 28px currentColor,0 0 60px currentColor}
+  #ultsub{position:absolute;margin-top:118px;font-size:clamp(12px,1.5vw,18px);letter-spacing:.55em;color:#fff;opacity:.85}
   @keyframes cutin{0%{opacity:0}8%{opacity:1}80%{opacity:1}100%{opacity:0}}
-  #ultcut.show #ulttext{animation:zoomin 2.4s cubic-bezier(.2,.9,.2,1) forwards}
-  @keyframes zoomin{0%{transform:scale(2.2);filter:blur(6px)}14%{transform:scale(1);filter:blur(0)}82%{transform:scale(1.04)}100%{transform:scale(1.1)}}
-  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:19}
+  #ultcut.show #ulttext{animation:zoomin 2.2s cubic-bezier(.2,.9,.2,1) forwards}
+  @keyframes zoomin{0%{transform:scale(2.1);filter:blur(5px)}15%{transform:scale(1);filter:blur(0)}100%{transform:scale(1.08)}}
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:29}
 
-  /* ===== 波次提示 / 遊戲結束 ===== */
-  #wavetoast{position:fixed;top:26%;left:50%;transform:translateX(-50%);z-index:8;font-size:clamp(26px,4vw,44px);
-    font-weight:900;letter-spacing:.4em;color:#fff;text-shadow:0 0 26px rgba(120,180,255,.8);opacity:0;pointer-events:none;transition:opacity .4s}
-  #gameover{background:rgba(4,6,12,.88);backdrop-filter:blur(8px)}
-  #gameover h1{font-size:clamp(40px,6vw,70px);font-weight:900;letter-spacing:.3em;margin-bottom:14px;
-    background:linear-gradient(180deg,#fff,#8fa3c0);-webkit-background-clip:text;background-clip:text;color:transparent}
-  #gameover .score{font-size:20px;color:#cfe0ff;margin-bottom:8px;letter-spacing:.1em}
-  #gameover button, #paused button{margin-top:24px;pointer-events:auto;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border:none;color:#fff;
-    font-size:17px;padding:13px 44px;border-radius:10px;cursor:pointer;letter-spacing:.2em;font-weight:700}
-  #gameover button:hover{filter:brightness(1.2)}
-  #paused h1{font-size:44px;letter-spacing:.4em;font-weight:900}
-  #paused{background:rgba(4,6,12,.7);backdrop-filter:blur(5px)}
+  /* ===== 死亡 / 結算 / 暫停 ===== */
+  #deathScr{position:fixed;inset:0;z-index:14;background:radial-gradient(ellipse at center,rgba(120,10,10,.25),rgba(10,4,4,.72));
+    display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+  #deathScr h2{font-size:34px;letter-spacing:.4em;font-weight:900;color:#ff8a80;margin-bottom:10px}
+  #deathScr p{color:#e9c7c2;font-size:16px;letter-spacing:.1em}
+  #endScr{background:rgba(5,7,11,.93);z-index:40}
+  #endScr h1{font-size:clamp(36px,6vw,64px);font-weight:900;letter-spacing:.3em;margin-bottom:16px}
+  #pauseHint{position:fixed;inset:0;z-index:12;background:rgba(5,7,11,.66);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;backdrop-filter:blur(3px);cursor:pointer}
+  #pauseHint h2{font-size:30px;letter-spacing:.3em;margin-bottom:14px}
+  #pauseHint p{color:#8fa3c0;line-height:2;text-align:center;font-size:14px}
+  #netstat{position:fixed;left:14px;top:12px;z-index:11;font-size:11.5px;color:#7d90ad;letter-spacing:.05em;
+    background:rgba(8,11,17,.6);padding:5px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.07)}
 </style>
 </head>
 <body>
-<canvas id="game"></canvas>
+<canvas id="c3d"></canvas>
 
-<!-- HUD -->
-<div id="hud" class="hidden">
-  <div id="elembadge"><span class="g" id="badgeGlyph">火</span><span class="t" id="badgeText"></span></div>
-  <div id="topbar">
-    <span class="stat">波次 <b id="uiWave">1</b></span>
-    <span class="stat">擊殺 <b id="uiKills">0</b></span>
-    <span class="stat">分數 <b id="uiScore">0</b></span>
+<!-- ============ 大廳 ============ -->
+<div id="lobby" class="overlay">
+  <div class="gtitle">五 行 槍 神 錄 3D</div>
+  <div class="gsub">WUXING STRIKE — 3v3 連線寫實槍戰</div>
+  <div class="panel">
+    <h3>作戰代號</h3>
+    <div class="row"><input class="ipt" id="nameIpt" maxlength="10" placeholder="輸入你的名字"></div>
+    <h3>選擇命定之行</h3>
+    <div id="charRow"></div>
+    <div class="row"><button class="btn pri" style="flex:1" id="btnCreate">建立房間（房主）</button></div>
+    <div class="or">─── 或 ───</div>
+    <div class="row">
+      <input class="ipt" id="codeIpt" maxlength="5" placeholder="輸入 5 位房號" style="text-transform:uppercase;letter-spacing:.3em">
+      <button class="btn grn" id="btnJoin">加入房間</button>
+    </div>
+    <div class="or">─── 或 ───</div>
+    <div class="row"><button class="btn gld" style="flex:1" id="btnSolo">單人開戰（電腦補滿 3v3）</button></div>
+    <div class="note">
+      連線採 P2P（PeerJS）：房主建房取得房號，隊友輸入房號即可加入；開戰時人數不足自動以 AI 士兵補齊。<br>
+      賽制：三對三團隊死鬥 · 110 分鐘 · 擊殺越多分數越高。<br>
+      <kbd>WASD</kbd> 移動 <kbd>Shift</kbd> 疾跑 <kbd>Space</kbd> 跳躍 <kbd>R</kbd> 換彈 <kbd>1-5</kbd> 武器 <kbd>E</kbd> 技能 <kbd>Q</kbd> 大招 <kbd>Tab</kbd> 計分板 · 右鍵開鏡（狙擊）
+    </div>
+    <div class="note" style="margin-top:8px"><a href="classic.html" style="color:#4ea1ff">→ 玩 2D 經典版</a></div>
   </div>
-  <div id="combo">COMBO ×1</div>
-  <div id="bl">
-    <div class="barwrap"><div class="barfill" id="hpfill" style="width:100%"></div><div class="barlabel" id="hplabel">HP 100/100</div></div>
-    <div class="barwrap"><div class="barfill" id="ultfill" style="width:0%"></div><div class="barlabel">絕技能量</div></div>
-    <div id="skillbox">
-      <div class="chip" id="chipSkill">E · 技能</div>
-      <div class="chip" id="chipUlt">Q · 大招</div>
-      <div class="chip">Shift · 疾走</div>
+</div>
+
+<!-- ============ 房間 ============ -->
+<div id="room" class="overlay hidden">
+  <h3 style="color:#9fb2d0;letter-spacing:.3em;margin-bottom:6px">房號（點擊複製）</h3>
+  <div id="roomCode" title="點擊複製">-----</div>
+  <div class="teams">
+    <div class="teamcol" style="border-color:rgba(255,90,78,.4)">
+      <h4 style="color:var(--red)">赤 焰 隊</h4>
+      <div id="slotsRed"></div>
+    </div>
+    <div class="teamcol" style="border-color:rgba(78,161,255,.4)">
+      <h4 style="color:var(--blue)">蒼 瀾 隊</h4>
+      <div id="slotsBlue"></div>
     </div>
   </div>
-  <div id="guns"></div>
+  <div class="row">
+    <button class="btn gry" id="btnSwap">切換隊伍</button>
+    <button class="btn pri hidden" id="btnStart">開始作戰（空位由 AI 補齊）</button>
+  </div>
+  <div class="note" id="roomHint">等待房主開始作戰…</div>
 </div>
 
-<!-- 大招演出 -->
-<div id="flash"></div>
-<div id="ultcut"><div class="band"></div><div id="ulttext"></div><div id="ultsub"></div></div>
-<div id="wavetoast"></div>
-
-<!-- 主選單 -->
-<div id="menu" class="overlay">
-  <div class="title">五 行 槍 神 錄</div>
-  <div class="subtitle">WUXING GUNBLADE — 選擇你的命定之行</div>
-  <div class="cards" id="cards"></div>
-  <div class="hint">
-    <kbd>W A S D</kbd> 移動 · <kbd>滑鼠</kbd> 瞄準射擊 · <kbd>1-5</kbd> 換槍 · <kbd>E</kbd> 屬性技能 · <kbd>Q</kbd> 中二大招 · <kbd>Shift</kbd> 疾走 · <kbd>P</kbd> 暫停<br>
-    五行相剋：金剋木 · 木剋土 · 土剋水 · 水剋火 · 火剋金 —— 剋制傷害 ×1.7，被剋 ×0.6
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="xhair"></div>
+  <div id="hitmark"><span></span><span></span><span></span><span></span></div>
+  <div id="topbar">
+    <span id="tRed">0</span>
+    <span id="timer">110:00</span>
+    <span id="tBlue">0</span>
+  </div>
+  <div id="killfeed"></div>
+  <div id="centerMsg"></div>
+  <div id="bl">
+    <div class="barwrap"><div class="barfill" id="hpfill" style="width:100%"></div><div class="barlabel" id="hplabel">HP 100</div></div>
+    <div class="barwrap"><div class="barfill" id="ultfill" style="width:0%"></div><div class="barlabel">絕技能量</div></div>
+    <div id="chips">
+      <div class="chip" id="chipSkill">E · 技能</div>
+      <div class="chip" id="chipUlt">Q · 大招</div>
+    </div>
+  </div>
+  <div id="br">
+    <div id="ammo">30<small> / ∞</small></div>
+    <div id="gunname">裂空突擊槍</div>
+    <div id="elemtag"></div>
   </div>
 </div>
+<div id="vign"></div>
+<div id="netstat" class="hidden">連線中…</div>
 
-<!-- 暫停 / 結束 -->
-<div id="paused" class="overlay hidden"><h1>暫 停</h1><button onclick="togglePause()">繼續</button></div>
-<div id="gameover" class="overlay hidden">
-  <h1>道 隕</h1>
-  <div class="score" id="finalScore"></div>
-  <div class="score" id="finalWave"></div>
-  <button onclick="location.reload()">輪迴再戰</button>
+<div id="board" class="hidden">
+  <h2>戰 況 一 覽</h2>
+  <div id="boardBody"></div>
 </div>
 
-<script>
-"use strict";
-/* ============================================================
-   五行槍神錄 — 單檔 HTML5 高畫質五行屬性槍戰
-   ============================================================ */
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-let W = 0, H = 0, DPR = 1;
-function resize(){
-  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
-  W = window.innerWidth; H = window.innerHeight;
-  canvas.width = W * DPR; canvas.height = H * DPR;
-  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-}
-window.addEventListener('resize', resize); resize();
+<div id="deathScr" class="hidden">
+  <h2>陣 亡</h2>
+  <p id="respawnTxt">3 秒後重返戰場…</p>
+</div>
 
-/* ---------- 五行資料 ---------- */
-const EL = {
-  metal:{ key:'metal', glyph:'金', name:'金行', color:'#ffd54a', dark:'#8a6d10', beats:'wood',
-          fx:'穿甲‧必爆機率' },
-  wood: { key:'wood',  glyph:'木', name:'木行', color:'#4ade80', dark:'#14532d', beats:'earth',
-          fx:'吸血‧回復' },
-  water:{ key:'water', glyph:'水', name:'水行', color:'#38bdf8', dark:'#0c4a6e', beats:'fire',
-          fx:'緩速‧冰凍' },
-  fire: { key:'fire',  glyph:'火', name:'火行', color:'#ff6b6b', dark:'#7f1d1d', beats:'metal',
-          fx:'灼燒‧延燒' },
-  earth:{ key:'earth', glyph:'土', name:'土行', color:'#d4a24c', dark:'#78350f', beats:'water',
-          fx:'擊退‧震懾' },
-};
-const EL_KEYS = Object.keys(EL);
-function elemMult(atk, def){          // 相剋 ×1.7，被剋 ×0.6
-  if (!atk || !def) return 1;
-  if (EL[atk].beats === def) return 1.7;
-  if (EL[def].beats === atk) return 0.6;
-  return 1;
-}
+<div id="pauseHint" class="hidden">
+  <h2>點 擊 繼 續</h2>
+  <p>點擊畫面鎖定滑鼠 · <kbd>Tab</kbd> 計分板 · <kbd>Esc</kbd> 釋放滑鼠</p>
+</div>
 
-/* ---------- 角色 ---------- */
-const CHARS = [
-  { el:'metal', name:'白鋒‧斬鐵', cname:'金之槍侍', hp:95, speed:250,
-    passive:'背刃鋒銳：所有子彈 +18% 暴擊，暴擊 ×2.2 並無視護甲',
-    skillName:'金鐘罩', skillDesc:'E：展開金屬結界 4 秒，格擋所有敵彈並反彈傷害', skillCd:9,
-    ultName:'金行奧義・萬刃歸宗', ultSub:'MYRIAD BLADES RETURN',
-    ultDesc:'召喚三十六柄飛劍環體斬殺，劍雨撕裂一切' },
-  { el:'wood', name:'青藤‧生嵐', cname:'木之槍侍', hp:110, speed:255,
-    passive:'生生不息：每秒回復 1.5 HP，命中吸血 12%',
-    skillName:'藤蔓縛地', skillDesc:'E：藤蔓爆發，纏繞禁錮周圍敵人 2.5 秒並持續絞殺', skillCd:10,
-    ultName:'木行奧義・世界樹之怒', ultSub:'WRATH OF YGGDRASIL',
-    ultDesc:'世界樹降臨，根鞭橫掃全場，生命逆流全滿' },
-  { el:'water', name:'寒淵‧洗川', cname:'水之槍侍', hp:100, speed:270,
-    passive:'行雲流水：移速最快，命中使敵緩速 40%',
-    skillName:'凝冰領域', skillDesc:'E：張開寒潮領域 5 秒，域內敵人凍緩、我方彈速+50%', skillCd:9,
-    ultName:'水行奧義・滄海萬川歸一', ultSub:'ALL RIVERS RETURN TO SEA',
-    ultDesc:'喚起橫貫天地的滅世海嘯，沖碎萬敵' },
-  { el:'fire', name:'炎獄‧焚天', cname:'火之槍侍', hp:100, speed:260,
-    passive:'業火纏身：命中附加灼燒，每秒燒蝕生命，可疊加',
-    skillName:'焰行者', skillDesc:'E：向滑鼠方向火遁衝刺，身後留下焚燒之路', skillCd:6,
-    ultName:'火行奧義・焚天滅地鳳凰劫', ultSub:'PHOENIX CALAMITY',
-    ultDesc:'天降隕焰，鳳凰振翅，大地化為煉獄' },
-  { el:'earth', name:'磐嶽‧不動', cname:'土之槍侍', hp:135, speed:235,
-    passive:'不動如山：受傷 -25%，命中擊退敵人',
-    skillName:'大地壁壘', skillDesc:'E：於瞄準處隆起岩牆掩體，可阻擋敵人與敵彈', skillCd:5,
-    ultName:'土行奧義・山崩地裂鎮乾坤', ultSub:'MOUNTAIN CRUSHES HEAVEN',
-    ultDesc:'八荒震盪，山嶽拔地而起，眾敵伏誅' },
-];
+<div id="flash"></div>
+<div id="ultcut"><div class="band"></div><div id="ulttext"></div><div id="ultsub"></div></div>
 
-/* ---------- 槍械 ---------- */
-const GUNS = [
-  { name:'靈息手槍',  en:'SPIRIT PISTOL', dmg:16, rate:4.5, spd:850, spread:0.02, pellets:1, size:4,  auto:false },
-  { name:'奔雷衝鋒槍', en:'THUNDER SMG',  dmg:8,  rate:13,  spd:800, spread:0.09, pellets:1, size:3,  auto:true  },
-  { name:'裂空突擊槍', en:'SKYRENDER AR', dmg:13, rate:8,   spd:900, spread:0.045,pellets:1, size:3.6,auto:true  },
-  { name:'崩嶽霰彈槍', en:'AVALANCHE SG', dmg:9,  rate:1.6, spd:750, spread:0.16, pellets:7, size:3.4,auto:false },
-  { name:'貫日狙擊槍', en:'SUNPIERCER',   dmg:70, rate:0.9, spd:1600,spread:0.002,pellets:1, size:5,  auto:false, pierce:true },
-];
+<div id="endScr" class="overlay hidden">
+  <h1 id="endTitle">戰 鬥 結 束</h1>
+  <div id="endBoard" style="max-width:94vw"></div>
+  <button class="btn pri" style="margin-top:26px" onclick="location.reload()">返回大廳</button>
+</div>
 
-/* ---------- 狀態 ---------- */
-let state = 'menu';           // menu / playing / paused / over
-let player = null;
-let bullets = [], ebullets = [], enemies = [], walls = [], parts = [], dmgTexts = [], zones = [], blades = [], meteors = [];
-let wave = 0, kills = 0, score = 0, combo = 0, comboTimer = 0;
-let shake = 0, slowmo = 1, waveDelay = 0;
-const keys = {};
-const mouse = { x: innerWidth/2, y: innerHeight/2, down:false };
-
-/* ---------- 輸入 ---------- */
-addEventListener('keydown', e=>{
-  keys[e.code] = true;
-  if (state!=='playing' && state!=='paused') return;
-  if (e.code==='KeyP' || e.code==='Escape') togglePause();
-  if (state!=='playing') return;
-  if (e.code.startsWith('Digit')){
-    const i = +e.code.slice(5)-1;
-    if (GUNS[i]) selectGun(i);
-  }
-  if (e.code==='KeyE') useSkill();
-  if (e.code==='KeyQ') useUlt();
-});
-addEventListener('keyup', e=> keys[e.code]=false);
-addEventListener('mousemove', e=>{ mouse.x=e.clientX; mouse.y=e.clientY; });
-addEventListener('mousedown', e=>{ if(e.button===0) mouse.down=true; });
-addEventListener('mouseup',   e=>{ if(e.button===0) mouse.down=false; });
-addEventListener('contextmenu', e=> e.preventDefault());
-
-function togglePause(){
-  if (state==='playing'){ state='paused'; document.getElementById('paused').classList.remove('hidden'); }
-  else if (state==='paused'){ state='playing'; document.getElementById('paused').classList.add('hidden'); last=performance.now(); requestAnimationFrame(loop); }
-}
-
-/* ---------- 主選單 ---------- */
-const cardsBox = document.getElementById('cards');
-CHARS.forEach((c,i)=>{
-  const e = EL[c.el];
-  const d = document.createElement('div');
-  d.className='card';
-  d.style.setProperty('--c', e.color);
-  d.style.borderColor = e.color+'55';
-  d.onmouseenter = ()=> d.style.boxShadow = `0 14px 44px ${e.color}44`;
-  d.onmouseleave = ()=> d.style.boxShadow = 'none';
-  d.innerHTML = `
-    <div class="glyph" style="color:${e.color}">${e.glyph}</div>
-    <h3 style="color:${e.color}">${c.name}</h3>
-    <div class="cname">${c.cname} · ${e.name}</div>
-    <p>${c.passive}</p>
-    <p style="margin-top:6px"><b style="color:${e.color}">${c.skillName}</b>｜${c.skillDesc}</p>
-    <div class="ult"><b style="color:${e.color}">Q「${c.ultName}」</b><br>${c.ultDesc}</div>`;
-  d.onclick = ()=> startGame(i);
-  cardsBox.appendChild(d);
-});
-
-/* ---------- 開始遊戲 ---------- */
-function startGame(ci){
-  const c = CHARS[ci];
-  player = {
-    char:c, el:c.el, x:W/2, y:H/2, r:16,
-    hp:c.hp, maxhp:c.hp, speed:c.speed,
-    gun:0, fireCd:0, skillCd:0, ult:0, ultMax:100,
-    shield:0, dashT:0, dashVx:0, dashVy:0, stamina:1,
-    burnStacks:0, iframes:0, facing:0,
-  };
-  bullets=[];ebullets=[];enemies=[];walls=[];parts=[];dmgTexts=[];zones=[];blades=[];meteors=[];
-  wave=0;kills=0;score=0;combo=0;shake=0;slowmo=1;waveDelay=1.2;
-  document.getElementById('menu').classList.add('hidden');
-  document.getElementById('hud').classList.remove('hidden');
-  const e = EL[c.el];
-  const badge = document.getElementById('badgeGlyph');
-  badge.textContent = e.glyph; badge.style.color = e.color;
-  document.getElementById('badgeText').innerHTML = `<b style="color:${e.color}">${c.name}</b><br>${e.name}屬性 · ${e.fx}`;
-  buildGunUI(); selectGun(0);
-  state='playing'; last=performance.now();
-  requestAnimationFrame(loop);
-}
-
-function buildGunUI(){
-  const box = document.getElementById('guns'); box.innerHTML='';
-  GUNS.forEach((g,i)=>{
-    const r = document.createElement('div');
-    r.className='gunrow'; r.id='gun'+i;
-    r.innerHTML = `<span class="key">${i+1}</span><span>${g.name}</span><span style="margin-left:auto;font-size:10px;opacity:.6">${g.en}</span>`;
-    box.appendChild(r);
-  });
-}
-function selectGun(i){
-  player.gun = i;
-  document.querySelectorAll('.gunrow').forEach((r,j)=> r.classList.toggle('active', j===i));
-}
-
-/* ---------- 工具 ---------- */
-const rand = (a,b)=> a + Math.random()*(b-a);
-const dist2 = (a,b)=> (a.x-b.x)**2 + (a.y-b.y)**2;
-function spawnParts(x,y,color,n,spd=200,life=.5,size=3){
-  for(let i=0;i<n;i++){
-    const a = Math.random()*Math.PI*2, s = rand(spd*0.3, spd);
-    parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rand(life*.5,life),max:life,color,size:rand(size*.5,size)});
-  }
-}
-function dmgText(x,y,txt,color,big=false){
-  dmgTexts.push({x:x+rand(-8,8),y,txt,color,life:big?1.1:0.8,big});
-}
-function toast(msg){
-  const t = document.getElementById('wavetoast');
-  t.textContent = msg; t.style.opacity = 1;
-  setTimeout(()=> t.style.opacity = 0, 1600);
-}
-
-/* ---------- 敵人 ---------- */
-function spawnWave(){
-  wave++;
-  document.getElementById('uiWave').textContent = wave;
-  const boss = wave % 5 === 0;
-  toast(boss ? `第 ${wave} 波 — 五行魔將降臨` : `第 ${wave} 波`);
-  const n = 4 + Math.floor(wave*1.6);
-  for(let i=0;i<n;i++) spawnEnemy(false);
-  if (boss) spawnEnemy(true);
-}
-function spawnEnemy(boss){
-  const side = Math.floor(Math.random()*4);
-  let x,y;
-  if (side===0){x=rand(0,W);y=-40;} else if(side===1){x=rand(0,W);y=H+40;}
-  else if (side===2){x=-40;y=rand(0,H);} else {x=W+40;y=rand(0,H);}
-  const el = EL_KEYS[Math.floor(Math.random()*5)];
-  const t = boss ? 'boss' : (Math.random()<0.28 ? 'shooter' : (Math.random()<0.18 ? 'tank' : 'chaser'));
-  const hpBase = t==='boss'?600+wave*120 : t==='tank'?70:t==='shooter'?34:40;
-  enemies.push({
-    x,y,el,type:t,
-    r: t==='boss'?46 : t==='tank'?24 : 15,
-    hp: hpBase*(1+wave*0.09), maxhp: hpBase*(1+wave*0.09),
-    speed: t==='boss'?85 : t==='tank'?70 : t==='shooter'?95 : rand(110,150)+wave*2,
-    dmg: (t==='boss'?26 : t==='tank'?18 : 12)*(1+wave*0.03),
-    fireCd: rand(1,2.5), slow:0, root:0, stun:0, burn:0, burnT:0, hitT:0,
-    wob: Math.random()*Math.PI*2,
-  });
-}
-
-/* ---------- 射擊 ---------- */
-function shoot(dt){
-  player.fireCd -= dt;
-  const g = GUNS[player.gun];
-  if (!mouse.down || player.fireCd > 0) return;
-  if (!g.auto) mouse.down = false;
-  player.fireCd = 1/g.rate;
-  const ang = Math.atan2(mouse.y-player.y, mouse.x-player.x);
-  const e = EL[player.el];
-  for(let i=0;i<g.pellets;i++){
-    const a = ang + rand(-g.spread, g.spread)*Math.PI;
-    let spd = g.spd;
-    // 水域加速
-    for(const z of zones) if (z.kind==='frost' && dist2(player,z) < z.r*z.r) spd*=1.5;
-    bullets.push({
-      x:player.x+Math.cos(ang)*20, y:player.y+Math.sin(ang)*20,
-      vx:Math.cos(a)*spd, vy:Math.sin(a)*spd,
-      dmg:g.dmg, el:player.el, size:g.size, life:1.4, pierce:g.pierce?3:0, color:e.color,
-    });
-  }
-  spawnParts(player.x+Math.cos(ang)*22, player.y+Math.sin(ang)*22, e.color, 4, 120, .18, 2.5);
-  shake = Math.min(shake + (g.pellets>1?5:g.dmg>50?7:1.6), 14);
-}
-
-/* ---------- 命中效果（屬性應用於槍上） ---------- */
-function applyHit(b, en){
-  let mult = elemMult(b.el, en.el);
-  let crit = false;
-  if (b.el==='metal' && Math.random() < 0.18+(player.char.el==='metal'?0:0)) { crit=true; mult*=2.2; }
-  else if (Math.random()<0.06){ crit=true; mult*=1.8; }
-  let dmg = b.dmg * mult * (b.ultScale||1);
-  en.hp -= dmg; en.hitT = 0.1;
-  // 屬性 on-hit
-  if (b.el==='fire'){ en.burn = Math.min(en.burn+1, 6); en.burnT = 3; }
-  if (b.el==='water'){ en.slow = Math.max(en.slow, 2); }
-  if (b.el==='wood'){ heal(dmg*0.12); }
-  if (b.el==='earth'){ const kb= en.type==='boss'?40:110; const a=Math.atan2(en.y-player.y,en.x-player.x); en.x+=Math.cos(a)*kb*0.16; en.y+=Math.sin(a)*kb*0.16; if(Math.random()<0.12) en.stun=Math.max(en.stun,0.6); }
-  const ecol = EL[b.el].color;
-  dmgText(en.x, en.y-en.r-6, Math.round(dmg)+(crit?'!':''), mult>1.2?'#ffd54a':(mult<0.9?'#7d90ad':ecol), crit||mult>1.2);
-  spawnParts(en.x, en.y, ecol, crit?14:7, 260, .4);
-  gainUlt(dmg*0.06);
-}
-function heal(v){ if(!player)return; player.hp = Math.min(player.maxhp, player.hp+v); }
-function gainUlt(v){ if(!player)return; player.ult = Math.min(player.ultMax, player.ult+v); }
-function killEnemy(en, i){
-  enemies.splice(i,1);
-  kills++; combo++; comboTimer = 3;
-  score += Math.round((en.type==='boss'?500:en.type==='tank'?40:20) * (1+combo*0.05));
-  spawnParts(en.x,en.y,EL[en.el].color, en.type==='boss'?60:18, 340, .7, 4);
-  gainUlt(en.type==='boss'?18:4);
-  if (en.type==='boss'){ shake=18; heal(25); }
-  document.getElementById('uiKills').textContent = kills;
-  document.getElementById('uiScore').textContent = score;
-  const cb = document.getElementById('combo');
-  cb.textContent = 'COMBO ×'+combo; cb.style.opacity = combo>2?1:0;
-}
-
-/* ---------- 技能 (E) ---------- */
-function useSkill(){
-  if (player.skillCd > 0) return;
-  const el = player.el, e = EL[el];
-  player.skillCd = player.char.skillCd;
-  if (el==='earth'){
-    // 大地壁壘：於瞄準方向豎起 3 段岩牆掩體
-    const ang = Math.atan2(mouse.y-player.y, mouse.x-player.x);
-    const d = Math.min(Math.hypot(mouse.x-player.x, mouse.y-player.y), 260);
-    const cx = player.x+Math.cos(ang)*d, cy = player.y+Math.sin(ang)*d;
-    const perp = ang + Math.PI/2;
-    for(let i=-1;i<=1;i++){
-      walls.push({x:cx+Math.cos(perp)*i*46, y:cy+Math.sin(perp)*i*46, r:24, hp:220+wave*15, maxhp:220+wave*15, life:14});
-    }
-    spawnParts(cx,cy,e.color,26,300,.6,5); shake=8;
-    toast('大地壁壘！');
-  } else if (el==='metal'){
-    player.shield = 4; spawnParts(player.x,player.y,e.color,30,260,.6);
-  } else if (el==='water'){
-    zones.push({kind:'frost', x:mouse.x, y:mouse.y, r:170, life:5, color:e.color});
-  } else if (el==='wood'){
-    for(const en of enemies){
-      if (dist2(en, player) < 300*300){ en.root = Math.max(en.root, 2.5); en.rootDot = 8; spawnParts(en.x,en.y,e.color,10,180,.5); }
-    }
-    zones.push({kind:'vine', x:player.x, y:player.y, r:300, life:.6, color:e.color});
-  } else if (el==='fire'){
-    const ang = Math.atan2(mouse.y-player.y, mouse.x-player.x);
-    player.dashT = 0.22; player.dashVx = Math.cos(ang)*1400; player.dashVy = Math.sin(ang)*1400;
-    player.iframes = Math.max(player.iframes, 0.4);
-  }
-}
-
-/* ---------- 大招 (Q) ---------- */
-function useUlt(){
-  if (player.ult < player.ultMax) return;
-  player.ult = 0;
-  const c = player.char, e = EL[player.el];
-  // 中二演出
-  const cut = document.getElementById('ultcut');
-  const t = document.getElementById('ulttext');
-  const s = document.getElementById('ultsub');
-  t.textContent = '「'+c.ultName+'」'; t.style.color = e.color;
-  s.textContent = c.ultSub;
-  cut.classList.remove('show'); void cut.offsetWidth; cut.classList.add('show');
-  const f = document.getElementById('flash');
-  f.style.transition='none'; f.style.opacity=.85;
-  setTimeout(()=>{ f.style.transition='opacity .8s'; f.style.opacity=0; }, 60);
-  slowmo = 0.25; setTimeout(()=> slowmo = 1, 900);
-  shake = 22;
-  player.iframes = Math.max(player.iframes, 2);
-
-  if (player.el==='metal'){
-    for(let i=0;i<36;i++) blades.push({ang:i/36*Math.PI*2, r:60, life:6, spin:3.2, dmg:26, hitCd:0});
-  } else if (player.el==='wood'){
-    heal(player.maxhp);
-    for(const en of enemies){ en.root = Math.max(en.root, 3.5); en.rootDot = 30; }
-    zones.push({kind:'vine', x:player.x, y:player.y, r:Math.max(W,H), life:1.2, color:e.color});
-    zones.push({kind:'bloom', x:player.x, y:player.y, r:240, life:6, color:e.color});
-  } else if (player.el==='water'){
-    zones.push({kind:'tsunami', x:-200, y:H/2, r:H*0.75, life:3.2, vx: (W+500)/2.4, dmg: 140, color:e.color, hitSet:new Set()});
-  } else if (player.el==='fire'){
-    for(let i=0;i<26;i++){
-      const target = enemies.length ? enemies[Math.floor(Math.random()*enemies.length)] : {x:rand(80,W-80),y:rand(80,H-80)};
-      meteors.push({x:target.x+rand(-60,60), y:target.y+rand(-60,60), t:0.35+i*0.14, r:85, dmg:90});
-    }
-  } else if (player.el==='earth'){
-    for(let i=0;i<enemies.length;i++){
-      const en = enemies[i];
-      en.stun = Math.max(en.stun, 3);
-      const mult = elemMult('earth', en.el);
-      const d = 160*mult; en.hp -= d;
-      dmgText(en.x,en.y-en.r,Math.round(d),'#ffd54a',true);
-      spawnParts(en.x,en.y,e.color,14,300,.6,5);
-    }
-    for(let i=0;i<10;i++){
-      const a = i/10*Math.PI*2;
-      walls.push({x:player.x+Math.cos(a)*150, y:player.y+Math.sin(a)*150, r:22, hp:300, maxhp:300, life:9});
-    }
-    for(const eb of ebullets) eb.life = 0;
-  }
-}
-
-/* ---------- 傷害玩家 ---------- */
-function hurtPlayer(dmg, srcEl){
-  if (player.iframes > 0) return;
-  let mult = elemMult(srcEl, player.el);
-  if (player.el==='earth') mult *= 0.75;
-  if (player.shield > 0){ // 金鐘罩反彈
-    spawnParts(player.x, player.y, EL.metal.color, 8, 220, .3);
-    return;
-  }
-  const d = dmg*mult;
-  player.hp -= d;
-  player.iframes = 0.35;
-  shake = Math.min(shake+7, 16);
-  dmgText(player.x, player.y-24, '-'+Math.round(d), '#ff6b6b', true);
-  if (player.hp <= 0){ gameOver(); }
-}
-function gameOver(){
-  state='over';
-  document.getElementById('hud').classList.add('hidden');
-  document.getElementById('gameover').classList.remove('hidden');
-  document.getElementById('finalScore').textContent = `最終分數 ${score} · 擊殺 ${kills}`;
-  document.getElementById('finalWave').textContent = `止步於第 ${wave} 波`;
-}
-
-/* ---------- 更新 ---------- */
-function update(dt){
-  const rdt = dt; dt *= slowmo;
-
-  /* 玩家移動 */
-  let mx = (keys.KeyD?1:0)-(keys.KeyA?1:0), my=(keys.KeyS?1:0)-(keys.KeyW?1:0);
-  const mlen = Math.hypot(mx,my)||1;
-  let spd = player.speed;
-  const sprinting = keys.ShiftLeft||keys.ShiftRight;
-  if (sprinting && player.stamina>0){ spd*=1.55; player.stamina=Math.max(0,player.stamina-dt*0.5); }
-  else player.stamina = Math.min(1, player.stamina+dt*0.35);
-  if (player.dashT>0){
-    player.dashT-=dt;
-    player.x += player.dashVx*dt; player.y += player.dashVy*dt;
-    if (player.el==='fire' && Math.random()<0.9)
-      zones.push({kind:'firetrail', x:player.x, y:player.y, r:34, life:2.6, color:EL.fire.color});
-  } else {
-    player.x += mx/mlen*spd*dt; player.y += my/mlen*spd*dt;
-  }
-  player.x = Math.max(18, Math.min(W-18, player.x));
-  player.y = Math.max(18, Math.min(H-18, player.y));
-  player.facing = Math.atan2(mouse.y-player.y, mouse.x-player.x);
-  player.iframes -= dt; player.skillCd -= dt; player.shield -= dt;
-  if (player.el==='wood') heal(1.5*dt);
-
-  /* 牆推開玩家/敵人 */
-  for(const w of walls){
-    const push=(o,or)=>{ const dx=o.x-w.x, dy=o.y-w.y, d=Math.hypot(dx,dy), min=w.r+or;
-      if (d<min && d>0){ o.x=w.x+dx/d*min; o.y=w.y+dy/d*min; } };
-    push(player, player.r);
-    for(const en of enemies) if(en.type!=='boss') push(en, en.r);
-  }
-
-  shoot(dt);
-
-  /* 子彈 */
-  for(let i=bullets.length-1;i>=0;i--){
-    const b = bullets[i];
-    b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt;
-    if (b.life<=0||b.x<-60||b.x>W+60||b.y<-60||b.y>H+60){ bullets.splice(i,1); continue; }
-    let hit=false;
-    for(let j=enemies.length-1;j>=0;j--){
-      const en=enemies[j];
-      if (dist2(b,en) < (en.r+b.size)**2){
-        applyHit(b,en);
-        if (en.hp<=0) killEnemy(en,j);
-        if (b.pierce>0){ b.pierce--; } else { hit=true; }
-        break;
-      }
-    }
-    if (hit) bullets.splice(i,1);
-  }
-
-  /* 敵彈 */
-  for(let i=ebullets.length-1;i>=0;i--){
-    const b=ebullets[i];
-    b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt;
-    let dead = b.life<=0;
-    // 撞牆
-    for(const w of walls){
-      if (dist2(b,w) < (w.r+4)**2){ w.hp-=18; dead=true; spawnParts(b.x,b.y,'#caa96a',5,140,.3); break; }
-    }
-    // 金鐘罩
-    if (!dead && player.shield>0 && dist2(b,player) < 60*60){
-      dead=true; spawnParts(b.x,b.y,EL.metal.color,6,200,.3);
-      // 反彈傷害給最近敵人
-      let best=null,bd=1e18;
-      for(const en of enemies){ const d=dist2(b,en); if(d<bd){bd=d;best=en;} }
-      if (best){ best.hp-=b.dmg*1.2; dmgText(best.x,best.y-best.r,Math.round(b.dmg*1.2),'#ffd54a'); if(best.hp<=0){ const k=enemies.indexOf(best); if(k>=0) killEnemy(best,k);} }
-    }
-    if (!dead && dist2(b,player) < (player.r+4)**2){ hurtPlayer(b.dmg, b.el); dead=true; }
-    if (dead) ebullets.splice(i,1);
-  }
-
-  /* 敵人 */
-  for(let i=enemies.length-1;i>=0;i--){
-    const en=enemies[i];
-    en.hitT-=dt; en.wob+=dt*3;
-    // 灼燒
-    if (en.burnT>0){ en.burnT-=dt; const d=en.burn*6*dt; en.hp-=d;
-      if(Math.random()<dt*8) spawnParts(en.x+rand(-en.r,en.r),en.y+rand(-en.r,en.r),EL.fire.color,1,60,.4,2.5);
-      if (en.hp<=0){ killEnemy(en,i); continue; } }
-    // 藤蔓絞殺
-    if (en.root>0 && en.rootDot){ en.hp -= en.rootDot*dt; if(en.hp<=0){ killEnemy(en,i); continue; } }
-    en.slow-=dt; en.root-=dt; en.stun-=dt;
-    let sm = 1;
-    if (en.slow>0) sm*=0.6;
-    for(const z of zones) if(z.kind==='frost' && dist2(en,z)<z.r*z.r) sm*=0.45;
-    if (en.root>0||en.stun>0) sm=0;
-    const a = Math.atan2(player.y-en.y, player.x-en.x);
-    if (en.type==='shooter'){
-      const d = Math.hypot(player.x-en.x, player.y-en.y);
-      const dir = d>320?1:(d<220?-1:0);
-      en.x += Math.cos(a)*en.speed*sm*dir*dt; en.y += Math.sin(a)*en.speed*sm*dir*dt;
-      en.fireCd -= dt*(sm>0?1:0.2);
-      if (en.fireCd<=0 && d<640){
-        en.fireCd = rand(1.4,2.4);
-        ebullets.push({x:en.x,y:en.y,vx:Math.cos(a)*330,vy:Math.sin(a)*330,dmg:en.dmg,el:en.el,life:3});
-      }
-    } else if (en.type==='boss'){
-      en.x += Math.cos(a)*en.speed*sm*dt; en.y += Math.sin(a)*en.speed*sm*dt;
-      en.fireCd -= dt;
-      if (en.fireCd<=0){
-        en.fireCd = 1.7;
-        for(let k=0;k<10;k++){ const aa=a+ (k-4.5)*0.16;
-          ebullets.push({x:en.x,y:en.y,vx:Math.cos(aa)*300,vy:Math.sin(aa)*300,dmg:en.dmg*0.8,el:en.el,life:3.6}); }
-      }
-    } else {
-      en.x += Math.cos(a)*en.speed*sm*dt + Math.cos(en.wob)*22*dt;
-      en.y += Math.sin(a)*en.speed*sm*dt + Math.sin(en.wob*1.3)*22*dt;
-    }
-    // 近身傷害
-    if (dist2(en,player) < (en.r+player.r)**2) hurtPlayer(en.dmg*dt*3.2, en.el);
-  }
-
-  /* 區域效果 */
-  for(let i=zones.length-1;i>=0;i--){
-    const z=zones[i]; z.life-=dt;
-    if (z.kind==='firetrail'){
-      for(let j=enemies.length-1;j>=0;j--){ const en=enemies[j];
-        if (dist2(en,z)<(z.r+en.r)**2){ const d=30*dt*elemMult('fire',en.el); en.hp-=d; en.burn=Math.min(en.burn+dt*2,6); en.burnT=2;
-          if(en.hp<=0) killEnemy(en,j); } }
-    }
-    if (z.kind==='bloom'){ if (dist2(player,z)<z.r*z.r) heal(8*dt); }
-    if (z.kind==='tsunami'){
-      z.x += z.vx*dt;
-      for(let j=enemies.length-1;j>=0;j--){ const en=enemies[j];
-        if (Math.abs(en.x-z.x)<70 && !z.hitSet.has(en)){
-          z.hitSet.add(en);
-          const d = z.dmg*elemMult('water',en.el);
-          en.hp-=d; en.slow=3; en.x+=140; dmgText(en.x,en.y-en.r,Math.round(d),EL.water.color,true);
-          spawnParts(en.x,en.y,EL.water.color,16,320,.6);
-          if(en.hp<=0) killEnemy(en,j);
-        } }
-      for(let j=ebullets.length-1;j>=0;j--) if (Math.abs(ebullets[j].x-z.x)<70) ebullets.splice(j,1);
-    }
-    if (z.life<=0) zones.splice(i,1);
-  }
-
-  /* 飛劍（金大招） */
-  for(let i=blades.length-1;i>=0;i--){
-    const bl=blades[i]; bl.life-=dt; bl.ang+=bl.spin*dt; bl.r = Math.min(bl.r+220*dt, 190);
-    bl.hitCd-=dt;
-    const bx = player.x+Math.cos(bl.ang)*bl.r, by=player.y+Math.sin(bl.ang)*bl.r;
-    bl.x=bx; bl.y=by;
-    if (bl.hitCd<=0){
-      for(let j=enemies.length-1;j>=0;j--){ const en=enemies[j];
-        if (dist2(bl,en)<(en.r+14)**2){
-          const d=bl.dmg*elemMult('metal',en.el);
-          en.hp-=d; dmgText(en.x,en.y-en.r,Math.round(d),EL.metal.color);
-          spawnParts(bx,by,EL.metal.color,4,200,.3);
-          bl.hitCd=0.12;
-          if(en.hp<=0) killEnemy(en,j);
-          break;
-        } }
-    }
-    if (bl.life<=0) blades.splice(i,1);
-  }
-
-  /* 隕焰（火大招） */
-  for(let i=meteors.length-1;i>=0;i--){
-    const m=meteors[i]; m.t-=dt;
-    if (m.t<=0){
-      shake=Math.min(shake+6,20);
-      spawnParts(m.x,m.y,EL.fire.color,26,380,.7,5);
-      spawnParts(m.x,m.y,'#ffd54a',12,250,.5,3);
-      for(let j=enemies.length-1;j>=0;j--){ const en=enemies[j];
-        if (dist2(m,en)<(m.r+en.r)**2){
-          const d=m.dmg*elemMult('fire',en.el);
-          en.hp-=d; en.burn=6; en.burnT=3;
-          dmgText(en.x,en.y-en.r,Math.round(d),EL.fire.color,true);
-          if(en.hp<=0) killEnemy(en,j);
-        } }
-      meteors.splice(i,1);
-    }
-  }
-
-  /* 牆 */
-  for(let i=walls.length-1;i>=0;i--){
-    const w=walls[i]; w.life-=dt;
-    if (w.hp<=0||w.life<=0){ spawnParts(w.x,w.y,'#caa96a',14,220,.5,4); walls.splice(i,1); }
-  }
-
-  /* 粒子 / 傷害字 */
-  for(let i=parts.length-1;i>=0;i--){
-    const p=parts[i]; p.x+=p.vx*rdt; p.y+=p.vy*rdt; p.vx*=0.92; p.vy*=0.92; p.life-=rdt;
-    if(p.life<=0) parts.splice(i,1);
-  }
-  for(let i=dmgTexts.length-1;i>=0;i--){
-    const d=dmgTexts[i]; d.y-=50*rdt; d.life-=rdt;
-    if(d.life<=0) dmgTexts.splice(i,1);
-  }
-
-  /* combo */
-  comboTimer-=rdt;
-  if (comboTimer<=0 && combo>0){ combo=0; document.getElementById('combo').style.opacity=0; }
-
-  /* 波次 */
-  if (enemies.length===0 && meteors.length===0){
-    waveDelay -= rdt;
-    if (waveDelay<=0){ spawnWave(); waveDelay=2.2; heal(10); }
-  }
-
-  gainUlt(dt*1.1); // 緩慢充能
-  shake = Math.max(0, shake - rdt*40);
-
-  /* HUD */
-  const hpP = Math.max(0,player.hp)/player.maxhp*100;
-  document.getElementById('hpfill').style.width = hpP+'%';
-  document.getElementById('hplabel').textContent = `HP ${Math.max(0,Math.ceil(player.hp))}/${player.maxhp}`;
-  document.getElementById('ultfill').style.width = (player.ult/player.ultMax*100)+'%';
-  const cs = document.getElementById('chipSkill');
-  cs.textContent = player.skillCd>0 ? `E · ${player.char.skillName} ${player.skillCd.toFixed(1)}s` : `E · ${player.char.skillName}`;
-  cs.classList.toggle('ready', player.skillCd<=0);
-  const cu = document.getElementById('chipUlt');
-  cu.textContent = player.ult>=player.ultMax ? 'Q · 大招就緒！' : `Q · 大招 ${Math.floor(player.ult)}%`;
-  cu.classList.toggle('charged', player.ult>=player.ultMax);
-}
-
-/* ---------- 繪製 ---------- */
-function drawBG(){
-  const g = ctx.createRadialGradient(W/2,H*0.35,80, W/2,H/2, Math.max(W,H)*0.75);
-  g.addColorStop(0,'#0d1526'); g.addColorStop(1,'#04060c');
-  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
-  // 網格
-  ctx.strokeStyle = 'rgba(90,130,200,0.07)'; ctx.lineWidth = 1;
-  const gs = 64;
-  ctx.beginPath();
-  for(let x=(W%gs)/2;x<W;x+=gs){ ctx.moveTo(x,0); ctx.lineTo(x,H); }
-  for(let y=(H%gs)/2;y<H;y+=gs){ ctx.moveTo(0,y); ctx.lineTo(W,y); }
-  ctx.stroke();
-  // 五行環（裝飾）
-  ctx.save(); ctx.globalAlpha=0.05; ctx.translate(W/2,H/2);
-  ctx.rotate(performance.now()/40000);
-  for(let i=0;i<5;i++){
-    const a=i/5*Math.PI*2, e=EL[EL_KEYS[i]];
-    ctx.fillStyle=e.color; ctx.font='900 120px serif';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(e.glyph, Math.cos(a)*Math.min(W,H)*0.33, Math.sin(a)*Math.min(W,H)*0.33);
-  }
-  ctx.restore();
-  // 暈影
-  const v = ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*0.45, W/2,H/2, Math.max(W,H)*0.75);
-  v.addColorStop(0,'rgba(0,0,0,0)'); v.addColorStop(1,'rgba(0,0,0,0.55)');
-  ctx.fillStyle=v; ctx.fillRect(0,0,W,H);
-}
-
-function draw(){
-  ctx.save();
-  if (shake>0) ctx.translate(rand(-shake,shake), rand(-shake,shake));
-  drawBG();
-
-  /* 區域 */
-  for(const z of zones){
-    ctx.save();
-    if (z.kind==='frost'){
-      ctx.globalAlpha = Math.min(0.28, z.life*0.4);
-      const g=ctx.createRadialGradient(z.x,z.y,10,z.x,z.y,z.r);
-      g.addColorStop(0,'rgba(56,189,248,0.5)'); g.addColorStop(1,'rgba(56,189,248,0)');
-      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,7); ctx.fill();
-      ctx.globalAlpha=0.5; ctx.strokeStyle=EL.water.color; ctx.lineWidth=2;
-      ctx.setLineDash([10,12]); ctx.beginPath(); ctx.arc(z.x,z.y,z.r,performance.now()/900,performance.now()/900+6.28); ctx.stroke();
-    }
-    if (z.kind==='firetrail'){
-      ctx.globalAlpha = Math.min(0.5, z.life*0.35);
-      const g=ctx.createRadialGradient(z.x,z.y,4,z.x,z.y,z.r);
-      g.addColorStop(0,'rgba(255,180,60,0.9)'); g.addColorStop(1,'rgba(255,80,40,0)');
-      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,7); ctx.fill();
-    }
-    if (z.kind==='vine'){
-      ctx.globalAlpha = Math.min(0.5, z.life);
-      ctx.strokeStyle = EL.wood.color; ctx.lineWidth=3; ctx.shadowColor=EL.wood.color; ctx.shadowBlur=18;
-      ctx.beginPath(); ctx.arc(z.x,z.y,z.r*(1-Math.max(0,z.life)*0.4),0,7); ctx.stroke();
-    }
-    if (z.kind==='bloom'){
-      ctx.globalAlpha = 0.16;
-      const g=ctx.createRadialGradient(z.x,z.y,10,z.x,z.y,z.r);
-      g.addColorStop(0,'rgba(74,222,128,0.7)'); g.addColorStop(1,'rgba(74,222,128,0)');
-      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(z.x,z.y,z.r,0,7); ctx.fill();
-    }
-    if (z.kind==='tsunami'){
-      ctx.globalAlpha=0.85;
-      const g=ctx.createLinearGradient(z.x-90,0,z.x+70,0);
-      g.addColorStop(0,'rgba(56,189,248,0)'); g.addColorStop(0.7,'rgba(56,189,248,0.75)'); g.addColorStop(1,'rgba(220,250,255,0.95)');
-      ctx.fillStyle=g; ctx.fillRect(z.x-90,0,160,H);
-      ctx.shadowColor=EL.water.color; ctx.shadowBlur=40;
-      ctx.fillStyle='rgba(230,250,255,0.9)';
-      for(let y=0;y<H;y+=26){ const wob=Math.sin(y*0.05+performance.now()/90)*16;
-        ctx.beginPath(); ctx.arc(z.x+58+wob, y, 10+Math.sin(y+performance.now()/120)*4, 0, 7); ctx.fill(); }
-    }
-    ctx.restore();
-  }
-
-  /* 牆（土掩體） */
-  for(const w of walls){
-    ctx.save();
-    ctx.translate(w.x,w.y);
-    ctx.shadowColor='#d4a24c'; ctx.shadowBlur=14;
-    const g=ctx.createRadialGradient(-6,-8,4,0,0,w.r+4);
-    g.addColorStop(0,'#c8a05e'); g.addColorStop(0.6,'#8a6a34'); g.addColorStop(1,'#4d3a1b');
-    ctx.fillStyle=g;
-    ctx.beginPath();
-    for(let i=0;i<7;i++){ const a=i/7*Math.PI*2, rr=w.r*(0.85+((i*53)%10)/33);
-      i?ctx.lineTo(Math.cos(a)*rr,Math.sin(a)*rr):ctx.moveTo(Math.cos(a)*rr,Math.sin(a)*rr); }
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle='rgba(255,220,150,0.35)'; ctx.lineWidth=2; ctx.stroke();
-    // 血條
-    ctx.shadowBlur=0; ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(-18,-w.r-12,36,5);
-    ctx.fillStyle='#d4a24c'; ctx.fillRect(-18,-w.r-12,36*Math.max(0,w.hp/w.maxhp),5);
-    ctx.restore();
-  }
-
-  /* 敵人 */
-  for(const en of enemies){
-    const e = EL[en.el];
-    ctx.save(); ctx.translate(en.x,en.y);
-    ctx.shadowColor=e.color; ctx.shadowBlur= en.type==='boss'?36:16;
-    // 本體
-    const g=ctx.createRadialGradient(0,0,2,0,0,en.r);
-    g.addColorStop(0, en.hitT>0?'#ffffff':e.color); g.addColorStop(1, e.dark);
-    ctx.fillStyle=g;
-    ctx.beginPath();
-    if (en.type==='tank'){ ctx.rect(-en.r,-en.r,en.r*2,en.r*2); }
-    else if (en.type==='shooter'){ for(let i=0;i<3;i++){ const a=i/3*Math.PI*2-Math.PI/2+en.wob*0.2; i?ctx.lineTo(Math.cos(a)*en.r*1.2,Math.sin(a)*en.r*1.2):ctx.moveTo(Math.cos(a)*en.r*1.2,Math.sin(a)*en.r*1.2);} ctx.closePath(); }
-    else if (en.type==='boss'){ for(let i=0;i<6;i++){ const a=i/6*Math.PI*2+en.wob*0.15; i?ctx.lineTo(Math.cos(a)*en.r,Math.sin(a)*en.r):ctx.moveTo(Math.cos(a)*en.r,Math.sin(a)*en.r);} ctx.closePath(); }
-    else ctx.arc(0,0,en.r,0,7);
-    ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=1.5; ctx.stroke();
-    // 屬性字
-    ctx.shadowBlur=0;
-    ctx.fillStyle='rgba(255,255,255,0.92)';
-    ctx.font=`900 ${en.type==='boss'?34:en.r>18?20:14}px serif`;
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(e.glyph,0,1);
-    // 狀態圈
-    if (en.root>0){ ctx.strokeStyle=EL.wood.color; ctx.lineWidth=3; ctx.setLineDash([5,5]); ctx.beginPath(); ctx.arc(0,0,en.r+7,0,7); ctx.stroke(); ctx.setLineDash([]);}
-    if (en.stun>0){ ctx.fillStyle='#fff'; ctx.font='12px sans-serif'; ctx.fillText('✦ ✦',0,-en.r-16); }
-    if (en.burnT>0){ ctx.fillStyle=EL.fire.color; ctx.font='11px sans-serif'; ctx.fillText('🔥'.repeat(Math.min(3,Math.ceil(en.burn/2))),0,en.r+13); }
-    // 血條
-    const bw = en.type==='boss'?90:36;
-    ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(-bw/2,-en.r-10,bw,4.5);
-    ctx.fillStyle=e.color; ctx.fillRect(-bw/2,-en.r-10,bw*Math.max(0,en.hp/en.maxhp),4.5);
-    ctx.restore();
-  }
-
-  /* 子彈 */
-  for(const b of bullets){
-    ctx.save();
-    ctx.shadowColor=b.color; ctx.shadowBlur=14;
-    ctx.strokeStyle=b.color; ctx.lineWidth=b.size;
-    ctx.lineCap='round';
-    const l = 0.018;
-    ctx.beginPath(); ctx.moveTo(b.x-b.vx*l, b.y-b.vy*l); ctx.lineTo(b.x,b.y); ctx.stroke();
-    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(b.x,b.y,b.size*0.55,0,7); ctx.fill();
-    ctx.restore();
-  }
-  for(const b of ebullets){
-    const e=EL[b.el];
-    ctx.save(); ctx.shadowColor=e.color; ctx.shadowBlur=12;
-    ctx.fillStyle=e.color; ctx.beginPath(); ctx.arc(b.x,b.y,5,0,7); ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(b.x,b.y,2.2,0,7); ctx.fill();
-    ctx.restore();
-  }
-
-  /* 飛劍 */
-  for(const bl of blades){
-    ctx.save(); ctx.translate(bl.x,bl.y); ctx.rotate(bl.ang+Math.PI/2);
-    ctx.shadowColor=EL.metal.color; ctx.shadowBlur=16;
-    ctx.fillStyle='#fff8dc';
-    ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(4.5,8); ctx.lineTo(0,14); ctx.lineTo(-4.5,8); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle=EL.metal.color; ctx.lineWidth=1.5; ctx.stroke();
-    ctx.restore();
-  }
-  /* 隕焰預警 + 下落 */
-  for(const m of meteors){
-    ctx.save();
-    ctx.globalAlpha=0.5; ctx.strokeStyle=EL.fire.color; ctx.lineWidth=2;
-    ctx.setLineDash([8,8]);
-    ctx.beginPath(); ctx.arc(m.x,m.y,m.r*0.8,0,7); ctx.stroke(); ctx.setLineDash([]);
-    if (m.t<0.5){
-      ctx.globalAlpha=1; ctx.shadowColor=EL.fire.color; ctx.shadowBlur=30;
-      const fy = m.y - m.t*900;
-      const g=ctx.createRadialGradient(m.x,fy,2,m.x,fy,16);
-      g.addColorStop(0,'#fff'); g.addColorStop(0.4,'#ffd54a'); g.addColorStop(1,'#ff6b6b');
-      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(m.x,fy,14,0,7); ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  /* 玩家 */
-  if (player){
-    const e = EL[player.el];
-    ctx.save(); ctx.translate(player.x,player.y);
-    if (player.iframes>0 && Math.floor(performance.now()/70)%2===0) ctx.globalAlpha=0.45;
-    // 光環
-    ctx.shadowColor=e.color; ctx.shadowBlur=26;
-    ctx.strokeStyle=e.color; ctx.lineWidth=2; ctx.globalAlpha*=0.9;
-    ctx.beginPath(); ctx.arc(0,0,player.r+6,performance.now()/500,performance.now()/500+4.6); ctx.stroke();
-    // 本體
-    const g=ctx.createRadialGradient(-4,-5,2,0,0,player.r);
-    g.addColorStop(0,'#ffffff'); g.addColorStop(0.35,e.color); g.addColorStop(1,e.dark);
-    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,player.r,0,7); ctx.fill();
-    // 槍
-    ctx.rotate(player.facing);
-    ctx.shadowBlur=8; ctx.fillStyle='#dde5f0';
-    ctx.fillRect(8,-3.5,26,7);
-    ctx.fillStyle=e.color; ctx.fillRect(30,-2.5,7,5);
-    ctx.rotate(-player.facing);
-    // 屬性字
-    ctx.shadowBlur=0; ctx.fillStyle='rgba(10,14,22,0.9)';
-    ctx.font='900 15px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(e.glyph,0,1);
-    // 金鐘罩
-    if (player.shield>0){
-      ctx.globalAlpha=0.55+Math.sin(performance.now()/90)*0.15;
-      ctx.strokeStyle=EL.metal.color; ctx.lineWidth=3; ctx.shadowColor=EL.metal.color; ctx.shadowBlur=24;
-      ctx.beginPath(); ctx.arc(0,0,56,0,7); ctx.stroke();
-      ctx.globalAlpha=0.12; ctx.fillStyle=EL.metal.color; ctx.beginPath(); ctx.arc(0,0,56,0,7); ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  /* 粒子 */
-  for(const p of parts){
-    ctx.globalAlpha = Math.max(0,p.life/p.max);
-    ctx.fillStyle=p.color; ctx.shadowColor=p.color; ctx.shadowBlur=8;
-    ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,7); ctx.fill();
-  }
-  ctx.globalAlpha=1; ctx.shadowBlur=0;
-
-  /* 傷害數字 */
-  for(const d of dmgTexts){
-    ctx.globalAlpha=Math.min(1,d.life*2);
-    ctx.font=`900 ${d.big?22:15}px sans-serif`;
-    ctx.textAlign='center';
-    ctx.strokeStyle='rgba(0,0,0,0.7)'; ctx.lineWidth=3.5; ctx.strokeText(d.txt,d.x,d.y);
-    ctx.fillStyle=d.color; ctx.fillText(d.txt,d.x,d.y);
-  }
-  ctx.globalAlpha=1;
-
-  ctx.restore(); // shake
-}
-
-/* ---------- 主迴圈 ---------- */
-let last = performance.now();
-function loop(now){
-  if (state!=='playing') return;
-  const dt = Math.min((now-last)/1000, 0.05);
-  last = now;
-  update(dt);
-  draw();
-  requestAnimationFrame(loop);
-}
-</script>
+<script src="js/three.min.js"></script>
+<script src="js/peerjs.min.js"></script>
+<script src="js/game.js"></script>
 </body>
 </html>
