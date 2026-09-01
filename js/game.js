@@ -379,7 +379,7 @@ function buildTextures(){
     for(let y=0;y<h/bh;y++){
       for(let x=-1;x<w/bw+1;x++){
         const off = (y%2)*bw/2;
-        c.fillStyle = `hsl(${rand(12,22)},${rand(28,40)}%,${rand(32,44)}%)`;
+        c.fillStyle = `hsl(${rand(12,22)},${rand(30,42)}%,${rand(40,52)}%)`;
         c.fillRect(x*bw+off+1, y*bh+1, bw-2, bh-2);
       }
     }
@@ -462,7 +462,7 @@ function buildWorld(){
 
   camera = new THREE.PerspectiveCamera(74, innerWidth/innerHeight, 0.08, 500);
 
-  const hemi = new THREE.HemisphereLight(0xcfe0ee, 0x54524c, 1.0);
+  const hemi = new THREE.HemisphereLight(0xcfe0ee, 0x6b675e, 1.0);
   scene.add(hemi);
   sunLight = new THREE.DirectionalLight(0xfff2dd, 2.1);
   sunLight.position.set(55, 90, 30);
@@ -472,6 +472,11 @@ function buildWorld(){
   sc.left=-80; sc.right=80; sc.top=80; sc.bottom=-80; sc.far=250;
   sunLight.shadow.bias = -0.0005;
   scene.add(sunLight);
+  // 反向補光（陰影面不至於死黑）
+  const fill = new THREE.DirectionalLight(0xbccadd, 0.85);
+  fill.position.set(-45, 55, -40);
+  scene.add(fill);
+  scene.add(new THREE.AmbientLight(0x3a4048, 0.6));
 
   buildTextures();
 
@@ -498,38 +503,130 @@ function buildWorld(){
   box(2, WH, 2*B+4, matConcBig, -B, WH/2, 0);
   box(2, WH, 2*B+4, matConcBig,  B, WH/2, 0);
 
-  // 中央倉庫（有兩個門口）
-  const bx=0, bz=0, bw=26, bd=16, bh=4.6, tw=0.6;
-  box(bw, bh, tw, matBrick, bx, bh/2, bz-bd/2);                       // 北牆
-  box((bw-6)/2, bh, tw, matBrick, bx-(bw/2-(bw-6)/4), bh/2, bz+bd/2); // 南牆左
-  box((bw-6)/2, bh, tw, matBrick, bx+(bw/2-(bw-6)/4), bh/2, bz+bd/2); // 南牆右（中間門洞6m）
-  box(tw, bh, (bd-5)/2, matBrick, bx-bw/2, bh/2, bz-(bd/2-(bd-5)/4)); // 西牆上
-  box(tw, bh, (bd-5)/2, matBrick, bx-bw/2, bh/2, bz+(bd/2-(bd-5)/4)); // 西牆下（門洞5m）
-  box(tw, bh, bd, matBrick, bx+bw/2, bh/2, bz);                       // 東牆
-  const roof = box(bw+1, 0.4, bd+1, matConc, bx, bh+0.2, bz, true, false);
-  roof.castShadow = true;
-  // 倉庫內掩體
-  box(3.4,1.3,1.6, matWood, bx-6, .65, bz+2);
-  box(3.4,1.3,1.6, matWood, bx+6, .65, bz-2);
+  /* ---- 牆段工具：沿軸建牆，gaps 可挖門洞（到地）或窗洞（1.05~2.0m） ---- */
+  const wallRun = (axis, a0, a1, c, h, mat, gaps=[])=>{
+    const segs = []; let cur = a0;
+    for (const g of [...gaps].sort((p,q)=>p.from-q.from)){
+      if (g.from > cur) segs.push([cur, g.from, 0, h]);
+      if (g.window){ segs.push([g.from, g.to, 0, 1.05]); segs.push([g.from, g.to, 2.0, h]); }
+      cur = g.to;
+    }
+    if (cur < a1) segs.push([cur, a1, 0, h]);
+    for (const [s0,s1,y0,y1] of segs){
+      const len = s1-s0, mid = (s0+s1)/2, hh = y1-y0;
+      if (len <= 0.01 || hh <= 0.01) continue;
+      if (axis==='x') box(len, hh, 0.55, mat, mid, y0+hh/2, c);
+      else box(0.55, hh, len, mat, c, y0+hh/2, mid);
+    }
+  };
+  /* ---- 房屋：四面牆 + 平頂/斜頂，doors/windows 依方位指定 ---- */
+  const houseAA = (x, z, w, d, h, mat, opt={})=>{
+    const N=z-d/2, S=z+d/2, W=x-w/2, E=x+w/2;
+    wallRun('x', W, E, N, h, mat, opt.n||[]);
+    wallRun('x', W, E, S, h, mat, opt.s||[]);
+    wallRun('z', N, S, W, h, mat, opt.w||[]);
+    wallRun('z', N, S, E, h, mat, opt.e||[]);
+    if (opt.gable){
+      const half = Math.hypot(d/2+0.5, 1.4), ang = Math.atan2(1.4, d/2+0.5);
+      const r1 = new THREE.Mesh(new THREE.BoxGeometry(w+1, 0.25, half), new THREE.MeshStandardMaterial({color:0x6e4a38, roughness:.9}));
+      r1.position.set(x, h+0.7, z-(d/4+0.12)); r1.rotation.x = ang;
+      const r2 = r1.clone(); r2.position.z = z+(d/4+0.12); r2.rotation.x = -ang;
+      for (const r of [r1,r2]){ r.castShadow=r.receiveShadow=true; scene.add(r); worldMeshes.push(r); }
+    } else {
+      const roof = box(w+0.8, 0.35, d+0.8, matConc, x, h+0.18, z, true, false);
+      roof.castShadow = true;
+    }
+  };
+  const door = (at, wd=1.8)=> ({from:at-wd/2, to:at+wd/2});
+  const win  = (at, wd=1.6)=> ({from:at-wd/2, to:at+wd/2, window:true});
 
-  // 貨櫃
+  // 中央倉庫（大空間、南門+西門、東西各開窗）
+  houseAA(0, 0, 26, 16, 4.6, matBrick, {
+    s:[door(0, 6)], w:[door(0, 5)],
+    n:[win(-8,2.2), win(0,2.2), win(8,2.2)], e:[win(-4,2), win(4,2)],
+  });
+  box(3.4,1.3,1.6, matWood, -6, .65, 2);
+  box(3.4,1.3,1.6, matWood,  6, .65, -2);
+  box(1.3,1.3,1.3, matWood,  0, .65, -5);
+
+  // 民房 A（西北，斜頂、南門東窗）
+  houseAA(-32, 27, 10, 8, 3.2, matPlaster, { s:[door(-32)], e:[win(27)], n:[win(-34,1.4)], gable:true });
+  // 民房 B（東南，斜頂、北門西窗）
+  houseAA(32, -27, 10, 8, 3.2, matPlaster, { n:[door(32)], w:[win(-27)], s:[win(30,1.4)], gable:true });
+  // 磚屋 C（西南，穿堂雙門）
+  houseAA(-27, -15, 8, 9, 3.4, matBrick, { n:[door(-27)], s:[door(-27)], e:[win(-15)] });
+  // 磚屋 D（東北，西門北窗雙窗）
+  houseAA(27, 13, 9, 10, 3.4, matBrick, { w:[door(13)], n:[win(24.5,1.6), win(29.5,1.6)], s:[door(27,1.6)] });
+  // 廢墟斷牆（南北中線，半毀房屋輪廓）
+  wallRun('x', -5, 5, 40, 1.6, matBrick, [door(0,2)]);
+  wallRun('z', 36, 44, -5, 2.2, matBrick, [win(40,1.8)]);
+  wallRun('x', -5, 5, -40, 1.6, matBrick, [door(1,2)]);
+  wallRun('z', -44, -36, 5, 2.2, matBrick, [win(-40,1.8)]);
+
+  // 貨櫃（含兩處疊櫃）
   const conts = [
-    [-30,-16, 0, matMetalR], [-34, 14, 1, matMetalG], [24, -26, 1, matMetalB],
-    [30, 18, 0, matMetalR], [-6, -34, 0, matMetalG], [8, 32, 1, matMetalB],
-    [44, -6, 1, matMetalG], [-46, -2, 0, matMetalB],
+    [-30,-30, 0, matMetalR], [-38, 8, 1, matMetalG], [20, -20, 1, matMetalB],
+    [38, 24, 0, matMetalR], [-8, -30, 0, matMetalG], [10, 30, 1, matMetalB],
+    [46, -8, 1, matMetalG], [-46, -2, 0, matMetalB], [16, -34, 0, matMetalR],
   ];
   for (const [x,z,rot,mat] of conts){
     const w = rot? 2.5 : 7.2, d = rot? 7.2 : 2.5;
     box(w, 2.7, d, mat, x, 1.35, z);
   }
-  // 木箱群
-  const crates = [[-16,8],[-14,9.4],[-15,8.6],[18,4],[19.3,4],[18.6,5.2],[2,-18],[3.3,-18],[-24,26],[-25.2,26.6],[36,-30],[-36,-32],[14,20],[40,34],[-42,30]];
+  box(7.2, 2.7, 2.5, matMetalG, -30, 4.05, -30);   // 疊櫃
+  box(2.5, 2.7, 7.2, matMetalR, 46, 4.05, -8);
+  // 卡車（駕駛艙+貨斗）
+  const truckAt = (x,z,mat)=>{
+    box(2.2, 1.9, 2.4, matMetalB, x, 1.3, z-3.1);
+    box(2.4, 0.7, 4.6, mat, x, .35+0.5, z+0.6, true, true);
+    box(2.3, 1.6, 4.4, matWood, x, 2.0, z+0.6);
+    for (const dz of [-2.9, 1.9]) for (const dx of [-1.05, 1.05]){
+      const wl = new THREE.Mesh(new THREE.CylinderGeometry(.45,.45,.3,10),
+        new THREE.MeshStandardMaterial({color:0x1c1e22, roughness:.9}));
+      wl.rotation.z = Math.PI/2; wl.position.set(x+dx, .45, z+dz);
+      wl.castShadow = true; scene.add(wl); worldMeshes.push(wl);
+    }
+  };
+  truckAt(-10, 42, matMetalG);
+  truckAt(12, -44, matMetalR);
+
+  // 木箱群（可跳上）
+  const crates = [[-16,8],[-14,9.4],[-15,8.6],[18,4],[19.3,4],[18.6,5.2],[2,-18],[3.3,-18],
+    [-22,34],[-23.2,34.6],[36,-34],[-36,-36],[14,20],[42,36],[-42,32],[24,-6],[-20,-8],[6,14]];
   for (const [x,z] of crates) box(1.3,1.3,1.3, matWood, x+rand(-.1,.1), .65, z+rand(-.1,.1));
-  const stacks = [[-15.5,8.9],[18.7,4.6],[-24.6,26.3]];
+  const stacks = [[-15.5,8.9],[18.7,4.6],[-22.6,34.3],[24,-6.9]];
   for (const [x,z] of stacks) box(1.3,1.3,1.3, matWood, x, 1.95, z);
-  // 低牆掩體
-  const lows = [[-8,14,4,0.9],[10,-10,4,0.9],[-28,-28,5,0.9],[26,28,5,0.9],[0,22,6,0.9],[0,-24,6,0.9]];
-  for (const [x,z,w,h] of lows) box(w,h,0.5, matPlaster, x, h/2, z);
+
+  // 混凝土護欄（中線推進路徑）
+  const matJersey = new THREE.MeshStandardMaterial({map:TEX.concrete, roughness:.92, color:0xbdbdb5});
+  const jerseys = [[-8,14,0],[10,-10,0],[-28,-28,1],[26,28,1],[0,22,0],[0,-24,0],
+    [-18,-2,1],[18,2,1],[-2,34,0],[2,-34,0],[-40,18,0],[40,-18,0]];
+  for (const [x,z,rot] of jerseys){
+    const w = rot? 0.5 : 3.6, d = rot? 3.6 : 0.5;
+    box(w, 1.05, d, matJersey, x, .52, z);
+    box(rot?0.8:3.6, 0.3, rot?3.6:0.8, matJersey, x, .15, z, false, false);
+  }
+  // 沙包工事（弧形）
+  const matSand = new THREE.MeshStandardMaterial({map:TEX.plaster, color:0xb09a68, roughness:1});
+  const sandArc = (cx,cz,r,a0,a1)=>{
+    for (let a=a0; a<=a1; a+=0.32){
+      box(0.9, 0.85, 0.45, matSand, cx+Math.cos(a)*r, .42, cz+Math.sin(a)*r);
+      box(0.7, 0.35, 0.5, matSand, cx+Math.cos(a)*r, .95, cz+Math.sin(a)*r, true, false);
+    }
+  };
+  sandArc(-34, -8, 3.2, -0.6, 1.4);
+  sandArc(34, 8, 3.2, Math.PI-0.6, Math.PI+1.4);
+  sandArc(0, 12, 2.6, Math.PI*0.75, Math.PI*1.55);
+  sandArc(0, -12, 2.6, -Math.PI*0.25, Math.PI*0.55);
+
+  // 室內暖光（倉庫與各民房，門窗透出燈光）
+  const lamp = (x,y,z,i=26,d=16)=>{
+    const L = new THREE.PointLight(0xffd9a0, i, d, 1.6);
+    L.position.set(x,y,z); scene.add(L);
+  };
+  lamp(-6, 3.8, 0); lamp(6, 3.8, 0);       // 倉庫
+  lamp(-32, 2.6, 27); lamp(32, 2.6, -27);  // 民房 A/B
+  lamp(-27, 2.7, -15); lamp(27, 2.7, 13);  // 磚屋 C/D
   // 兩座崗樓（基地地標）
   towerAt(-48,-48, matConc, 0xff5a4e);
   towerAt(48,48, matConc, 0x4ea1ff);
@@ -1198,6 +1295,15 @@ function botThink(s, dt){
     s.pos.x = clamp(s.pos.x, -57, 57);
     s.pos.z = clamp(s.pos.z, -57, 57);
     s.moving = true;
+    // 卡牆自救：想走卻沒位移 → 換路線
+    const moved = (s.pos.x-(b.px??s.pos.x))**2 + (s.pos.z-(b.pz??s.pos.z))**2;
+    b.stuckT = moved < (speed*dt*0.25)**2 ? (b.stuckT||0)+dt : 0;
+    if (b.stuckT > 1.2){
+      b.stuckT = 0; b.thinkCd = rand(2,4);
+      b.wp = NAV[Math.floor(Math.random()*NAV.length)];
+      s.ry += rand(-1.6, 1.6);
+    }
+    b.px = s.pos.x; b.pz = s.pos.z;
   } else s.moving = false;
 }
 function botShoot(s, target, dist, g){
