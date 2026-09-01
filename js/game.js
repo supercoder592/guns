@@ -81,6 +81,16 @@ function sfx(kind, vol=1){
     const o = ac.createOscillator(); o.type='triangle'; o.frequency.setValueAtTime(300,t);
     o.connect(g); g.gain.setValueAtTime(0.12*vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.1);
     o.start(t); o.stop(t+0.11);
+  } else if (kind==='steam'){
+    const len = 0.9;
+    const buf = ac.createBuffer(1, ac.sampleRate*len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/d.length, 1.2);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type='bandpass'; f.frequency.value=3800; f.Q.value=0.6;
+    src.connect(f); f.connect(g);
+    g.gain.setValueAtTime(0.3*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+len);
+    src.start(t);
   }
 }
 
@@ -205,6 +215,7 @@ function hostOnData(conn, d){
   else if (d.t==='fire'){ bcast({t:'fire', i:conn._idx, o:d.o, e:d.e}, conn); remoteTracer(d.o, d.e, conn._idx); }
   else if (d.t==='hit'){ hostApplyHit(conn._idx, d.v|0, d.part, d.g|0, d.dist||10); }
   else if (d.t==='whit'){ hostWallHit(d.id, d.dmg||20); }
+  else if (d.t==='bhit'){ hostBarrelHit(conn._idx, d.id|0, d.dmg||20); }
   else if (d.t==='skill'){ hostUseSkill(conn._idx, d); }
   else if (d.t==='ult'){ hostUseUlt(conn._idx); }
 }
@@ -339,6 +350,7 @@ const worldMeshes = [];   // 可被子彈打到的場景物
 const colliders = [];     // AABB 移動碰撞 {x0,x1,y0,y1,z0,z1}
 const wallsLive = new Map(); // 土牆 id -> {group, hp, colliders:[], meshes:[], dieAt}
 let wallSeq = 0;
+const barrels = new Map();   // 可引爆油桶 id -> {mesh, stripe, col, x, z, hp, dead}
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 
 function makeCanvasTex(draw, w=256, h=256, repeat=1){
@@ -422,6 +434,19 @@ function buildTextures(){
   }, 256, 256, 1);
   TEX.camoR = camoTex('#7a3b32','#8f5a3a','#5c2e28','#3f2320');
   TEX.camoB = camoTex('#31506e','#3d6484','#26374b','#1d2c3c');
+  // 柔邊光暈貼圖（煙霧/火焰/火花用）
+  const radialTex = stops=>{
+    const cv = document.createElement('canvas'); cv.width=cv.height=128;
+    const c = cv.getContext('2d');
+    const g = c.createRadialGradient(64,64,2,64,64,64);
+    for (const [o,col] of stops) g.addColorStop(o,col);
+    c.fillStyle=g; c.fillRect(0,0,128,128);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  TEX.puff  = radialTex([[0,'rgba(255,255,255,0.95)'],[0.4,'rgba(255,255,255,0.5)'],[1,'rgba(255,255,255,0)']]);
+  TEX.flame = radialTex([[0,'rgba(255,245,190,1)'],[0.25,'rgba(255,180,60,0.95)'],[0.6,'rgba(255,90,30,0.55)'],[1,'rgba(255,60,20,0)']]);
+  TEX.spark = radialTex([[0,'rgba(255,255,255,1)'],[0.3,'rgba(255,230,160,0.8)'],[1,'rgba(255,200,80,0)']]);
 }
 function camoTex(a,b,cc,d){
   return makeCanvasTex((c,w,h)=>{
@@ -630,13 +655,45 @@ function buildWorld(){
   // 兩座崗樓（基地地標）
   towerAt(-48,-48, matConc, 0xff5a4e);
   towerAt(48,48, matConc, 0x4ea1ff);
-  // 桶
+  // 一般油桶
   const barrelG = new THREE.CylinderGeometry(0.42,0.42,1.1,10);
   const bmat = new THREE.MeshStandardMaterial({color:0x6a6f5a, roughness:.6, metalness:.3});
   for (const [x,z] of [[-10,-6],[12,12],[-20,-20],[22,-14],[-32,4],[34,6]]){
     const m = new THREE.Mesh(barrelG, bmat); m.position.set(x,.55,z);
     m.castShadow=m.receiveShadow=true; scene.add(m); worldMeshes.push(m);
     addCollider(x,z,0.9,0.9,1.1);
+  }
+  // 可引爆油桶（紅桶，打爆造成範圍傷害與衝擊波、可連鎖）
+  const rmat = new THREE.MeshStandardMaterial({color:0xb03428, roughness:.5, metalness:.3});
+  const smat = new THREE.MeshStandardMaterial({color:0xf2e28a, emissive:0x664410, emissiveIntensity:.4, roughness:.5});
+  const bpos = [[-14,-2],[16,10],[-6,26],[6,-28],[-37,21],[38,-14],[-24,-34],[26,34],[44,10]];
+  bpos.forEach(([x,z], i)=>{
+    const id = i+1;
+    const m = new THREE.Mesh(barrelG, rmat); m.position.set(x,.55,z);
+    m.castShadow=m.receiveShadow=true; m.userData = {barrel:id};
+    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.43,0.43,0.16,10), smat);
+    stripe.position.set(x,.8,z);
+    scene.add(m); scene.add(stripe); worldMeshes.push(m);
+    const col = {x0:x-.45,x1:x+.45,y0:0,y1:1.1,z0:z-.45,z1:z+.45};
+    colliders.push(col);
+    barrels.set(id, {mesh:m, stripe, col, x, z, hp:30, dead:false});
+  });
+  // 輪胎堆
+  const tmat = new THREE.MeshStandardMaterial({color:0x1e2124, roughness:.95});
+  for (const [x,z,n] of [[-18,18,3],[20,-8,2],[8,38,3],[-40,-20,2],[36,16,2]]){
+    for (let i=0;i<n;i++){
+      const t = new THREE.Mesh(new THREE.TorusGeometry(.55,.22,8,16), tmat);
+      t.rotation.x = Math.PI/2; t.position.set(x, .24+i*.42, z);
+      t.castShadow=t.receiveShadow=true; scene.add(t); worldMeshes.push(t);
+    }
+    addCollider(x, z, 1.5, 1.5, .4*n+.3);
+  }
+  // 斜靠棧板
+  const pmat = new THREE.MeshStandardMaterial({map:TEX.wood, roughness:.9});
+  for (const [x,z,ry] of [[-12,30,.5],[14,-16,-.7],[-34,-24,.3],[30,6,-.4]]){
+    const p = new THREE.Mesh(new THREE.BoxGeometry(1.6,1.6,.12), pmat);
+    p.position.set(x,.75,z); p.rotation.set(-.35,ry,0);
+    p.castShadow=p.receiveShadow=true; scene.add(p); worldMeshes.push(p);
   }
 }
 function towerAt(x,z, mat, flagColor){
@@ -840,6 +897,9 @@ function tryFire(){
   me.spreadHeat = Math.min(1.6, me.spreadHeat + 0.28);
   sfx(g.pellets>1||g.dmg>60?'shot2':'shot');
   muzzleFlash();
+  spawnCasing();
+  const myEl = CHARS[slots[myIdx].char].el;
+  const elColor = EL[myEl].color;
   const spread = g.spread * (me.zoomed&&g.zoom?0.15:1) * (1+me.spreadHeat);
   const origin = new THREE.Vector3(me.pos.x, EYE(), me.pos.z);
   for (let p=0; p<g.pellets; p++){
@@ -854,24 +914,56 @@ function tryFire(){
       end = h.point;
       const ud = h.object.userData || {};
       if (ud.wallId !== undefined){
-        reportWallHit(ud.wallId, g.dmg*g.pellets>40? g.dmg : g.dmg);
-        impactFX(h.point, 0xc99a4e);
+        reportWallHit(ud.wallId, g.dmg);
+        impactElem(h.point, dir, myEl, true);
+      } else if (ud.barrel !== undefined){
+        reportBarrelHit(ud.barrel, g.dmg);
+        sparkBurst(h.point, 0xffcc66, 8, 4);
       } else if (ud.slot !== undefined){
         // 打中敵人
         showHitmark(ud.part==='head');
         sfx('hit');
         reportHit(ud.slot, ud.part, me.gun, h.distance);
-        impactFX(h.point, 0xff4444);
+        const vs = slots[ud.slot];
+        sparkBurst(h.point, vs ? EL[CHARS[vs.char].el].color : 0xff4444, 6, 2.5);
+        spawnSmoke(h.point.x, h.point.y, h.point.z, {n:2, size:.5, color:0x883333, rise:.4, life:.6, grow:.5, opacity:.5, spread:.15});
       } else {
-        impactFX(h.point, 0xbbbbbb);
+        impactElem(h.point, dir, myEl, false);
       }
     }
-    tracer(origin.clone().addScaledVector(dir,0.6).add(new THREE.Vector3(0,-0.12,0)), end);
+    tracer(origin.clone().addScaledVector(dir,0.6).add(new THREE.Vector3(0,-0.12,0)), end, elColor);
     // 廣播開火（讓別人看到曳光）
     netFire(origin, end);
   }
   if (me.ammo===0) startReload();
   updateAmmoUI();
+}
+/* 依屬性的彈著特效 */
+function impactElem(point, dir, el, isRock){
+  const c = EL[el].color;
+  if (el==='metal'){
+    sparkBurst(point, 0xffe9a0, 12, 5);
+    if (Math.random()<0.35){ // 跳彈
+      const ref = dir.clone().reflect(new THREE.Vector3(rand(-1,1),rand(.3,1),rand(-1,1)).normalize()).normalize();
+      tracer(point, point.clone().addScaledVector(ref, rand(4,10)), 0xffe9a0);
+    }
+  } else if (el==='fire'){
+    sparkBurst(point, 0xff9040, 8, 3.5);
+    spawnSmoke(point.x, point.y, point.z, {flame:true, n:2, size:.7, rise:1, life:.4, grow:.8, opacity:.9, spread:.1});
+  } else if (el==='water'){
+    sparkBurst(point, 0x8fdcff, 8, 3);
+    spawnDebris(point.x, point.y, point.z, 0x6fc8f0, 2, {min:.03,max:.07,spd:2.5,bounce:.15});
+  } else if (el==='wood'){
+    sparkBurst(point, 0x7dfa9e, 8, 3);
+  } else {
+    sparkBurst(point, 0xd8c090, 6, 3);
+    spawnSmoke(point.x, point.y, point.z, {n:2, size:.6, color:0xa08b62, rise:.6, life:.9, grow:.7, opacity:.5, spread:.15});
+  }
+  if (isRock || Math.random()<.4) spawnDebris(point.x, point.y, point.z, isRock?0x8a6a3c:0x777770, 2, {min:.03,max:.08,spd:3});
+}
+function reportBarrelHit(id, dmg){
+  if (isHost) hostBarrelHit(myIdx, id, dmg);
+  else if (conns[0]) send(conns[0], {t:'bhit', id, dmg});
 }
 function startReload(){
   if (me.reloading>0 || me.ammo===GUNS[me.gun].mag) return;
@@ -896,7 +988,7 @@ function netFire(o, e){
 const fxList = [];
 function tracer(a, b, color=0xfff2c0){
   const geo = new THREE.BufferGeometry().setFromPoints([a,b]);
-  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({color, transparent:true, opacity:0.9}));
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({color, transparent:true, opacity:0.95, blending:THREE.AdditiveBlending}));
   scene.add(line);
   fxList.push({obj:line, die:now()+0.07, mat:line.material});
 }
@@ -907,7 +999,9 @@ function impactFX(p, color){
   fxList.push({obj:s, die:now()+0.12, mat:s.material});
 }
 function remoteTracer(o, e, idx){
-  tracer(new THREE.Vector3(o[0],o[1],o[2]), new THREE.Vector3(e[0],e[1],e[2]));
+  const s = slots[idx];
+  const col = s ? EL[CHARS[s.char].el].color : 0xfff2c0;
+  tracer(new THREE.Vector3(o[0],o[1],o[2]), new THREE.Vector3(e[0],e[1],e[2]), col);
   const d = camera.position.distanceTo(new THREE.Vector3(o[0],o[1],o[2]));
   if (d < 60) sfx('shot', clamp(1-d/60, .05, .6));
 }
@@ -947,6 +1041,7 @@ function rebuildViewmodel(){
   viewmodel.rotation.y = 0.05;
   viewmodel.rotation.x = 0.02;
   viewmodel.scale.setScalar(0.8);
+  if (flashLight) flashLight.color.set(e.color);   // 槍口焰依屬性變色
 }
 
 /* ------------------------- 主機端：傷害裁決 ------------------------- */
@@ -962,8 +1057,31 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
   if (part==='head') dmg *= g.hs;
   dmg *= elemMult(aEl, vEl);
   if (aEl==='metal' && Math.random()<0.2) dmg *= 1.5;      // 金：必爆機率
-  if (aEl==='fire'){ vic.fx.burn = 3; vic.fx.burnSrc = attIdx; } // 火：灼燒
-  if (aEl==='water'){ vic.fx.slow = 2; }                    // 水：緩速
+  if (aEl==='fire'){
+    if (vic.fx.root > 0){                                   // 五行反應：木生火 → 爆燃
+      vic.fx.root = 0; dmg += 25;
+      const vp = vic.idx===myIdx ? me.pos : vic.pos;
+      const ev = {t:'ev', k:'boomfx', x:+vp.x.toFixed(1), y:+(vp.y+1).toFixed(1), z:+vp.z.toFixed(1)};
+      bcast(ev); onGameEvent(ev);
+      for (const o of slots){
+        if (o.ctrl==='empty' || !o.alive || o.team===att.team || o===vic) continue;
+        const op = o.idx===myIdx ? me.pos : o.pos;
+        if ((op.x-vp.x)**2+(op.z-vp.z)**2 < 25){
+          o.fx.burn = Math.max(o.fx.burn, 3); o.fx.burnSrc = attIdx;
+          hostDamage(o, 30*elemMult('fire', CHARS[o.char].el), att, false, '爆燃');
+        }
+      }
+    }
+    vic.fx.burn = 3; vic.fx.burnSrc = attIdx;               // 火：灼燒
+  }
+  if (aEl==='water'){
+    vic.fx.slow = 2;                                        // 水：緩速
+    if (vic.fx.burn > 0){                                   // 五行反應：水剋火 → 蒸汽熄滅+額外傷害
+      vic.fx.burn = 0; dmg += 12;
+      const vp = vic.idx===myIdx ? me.pos : vic.pos;
+      hostSteam(vp.x, vp.z);
+    }
+  }
   if (aEl==='wood'){ hostHeal(att, dmg*0.15); }             // 木：吸血
   if (aEl==='earth' && Math.random()<0.15){ vic.fx.stun = Math.max(vic.fx.stun, 0.5); } // 土：震懾
   hostDamage(vic, dmg, att, part==='head', g.name);
@@ -1000,6 +1118,40 @@ function hostWallHit(id, dmg){
   if (w.hp <= 0){
     const ev = {t:'ev', k:'wallgone', id};
     bcast(ev); onGameEvent(ev);
+  }
+}
+function hostBarrelHit(attIdx, id, dmg){
+  const b = barrels.get(id); if(!b || b.dead) return;
+  b.hp -= dmg;
+  if (b.hp <= 0) hostExplodeBarrel(attIdx, id);
+}
+function hostExplodeBarrel(attIdx, id){
+  const b = barrels.get(id); if(!b || b.dead) return;
+  const att = slots[attIdx];
+  const ev = {t:'ev', k:'barrel', id, a:attIdx};
+  bcast(ev); onGameEvent(ev);   // 事件處理內會標記 dead 並播特效
+  // 範圍傷害（火屬性）
+  for (const o of slots){
+    if (o.ctrl==='empty' || !o.alive) continue;
+    const p = o.idx===myIdx ? me.pos : o.pos;
+    const d = Math.hypot(p.x-b.x, p.z-b.z);
+    if (d < 7.5){
+      const dmg = 70*(1-d/9)*elemMult('fire', CHARS[o.char].el);
+      o.fx.burn = Math.max(o.fx.burn, 2.5); o.fx.burnSrc = attIdx;
+      if (o.ctrl==='bot'){ // 物理擊飛（AI）
+        const a = Math.atan2(p.z-b.z, p.x-b.x);
+        o.pos.x += Math.cos(a)*2.2; o.pos.z += Math.sin(a)*2.2;
+        o.fx.stun = Math.max(o.fx.stun, .5);
+      }
+      hostDamage(o, dmg, att && att.team!==o.team ? att : null, false, '油桶爆炸');
+    }
+  }
+  hostAddZone('fire', b.x, b.z, 2.6, 5, attIdx);
+  // 連鎖引爆
+  for (const [oid, ob] of barrels){
+    if (ob.dead || oid===id) continue;
+    if ((ob.x-b.x)**2 + (ob.z-b.z)**2 < 36)
+      setTimeout(()=>{ if(started) hostExplodeBarrel(attIdx, oid); }, rand(200,420));
   }
 }
 
@@ -1045,8 +1197,17 @@ function hostUseSkill(idx, d){
     for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team!==s.team){
       if (o.pos.distanceTo(s.pos) < 14){ o.fx.slow = 4; }
     }
+    hostAddZone('frost', d.p[0], d.p[2], 8, 6, idx);
   }
-  else if (el==='fire'){ s.fx.haste = 2; }
+  else if (el==='fire'){
+    s.fx.haste = 2;
+    // 焰行者：衝刺路徑留下火場
+    const f = new THREE.Vector3(d.dir[0],0,d.dir[2]).normalize();
+    for (let i=1;i<=4;i++){
+      const fx2 = clamp(d.p[0]+f.x*i*2.2, -56, 56), fz2 = clamp(d.p[2]+f.z*i*2.2, -56, 56);
+      hostAddZone('fire', fx2, fz2, 1.6, 3.2, idx);
+    }
+  }
   bcast(ev); onGameEvent(ev);
 }
 function localUlt(){
@@ -1075,6 +1236,7 @@ function hostUseUlt(idx){
         hostDamage(o, 85*elemMult('fire',CHARS[o.char].el), s, false, '鳳凰劫');
         o.fx.burn = 4; o.fx.burnSrc = idx;
       }
+      for (const [tx,tz] of ev.targets) hostAddZone('fire', tx, tz, 2.4, 4.5, idx);
     }, 700);
   } else if (el==='earth'){
     for (const o of foes) if (o.pos.distanceTo(s.pos)<26){
@@ -1123,15 +1285,29 @@ function onGameEvent(d){
     if (d.el==='wood' || d.el==='water'){
       ringFX(new THREE.Vector3(d.p[0], 0.15, d.p[2]), d.el==='wood'?0x4ade80:0x38bdf8, d.el==='wood'?12:14);
     }
+    if (d.el==='wood') spikeBurst(d.p[0], d.p[2], 0x2f9e57, 9, 1.5, 10, 1.7);  // 藤蔓破土
+    if (d.el==='metal') sparkBurst(new THREE.Vector3(d.p[0], 1.3, d.p[2]), 0xffe9a0, 16, 4);
     if (d.el==='fire'){ /* 衝刺者本地處理 */ }
   }
   else if (d.k==='ult'){
     const s = slots[d.i], c = CHARS[s.char], e = EL[c.el];
     ultCutin(c, e, s.idx===myIdx);
-    if (c.el==='water'){ ringFX(new THREE.Vector3(d.p[0],0.2,d.p[2]), 0x38bdf8, 60, 2.2); }
-    if (c.el==='wood'){ ringFX(new THREE.Vector3(d.p[0],0.2,d.p[2]), 0x4ade80, 30, 1.6); }
+    if (c.el==='water'){
+      ringFX(new THREE.Vector3(d.p[0],0.2,d.p[2]), 0x38bdf8, 60, 2.2);
+      waveRing(d.p[0], d.p[2], 0x49c8ff, 46, 1.9, 4.5);
+      waveRing(d.p[0], d.p[2], 0xbfeaff, 46, 2.3, 2.2);
+      spawnSmoke(d.p[0], .5, d.p[2], {n:14, size:2.4, color:0xcfeaff, rise:2.4, life:1.6, grow:1.6, opacity:.6, spread:3});
+    }
+    if (c.el==='wood'){
+      ringFX(new THREE.Vector3(d.p[0],0.2,d.p[2]), 0x4ade80, 30, 1.6);
+      spikeBurst(d.p[0], d.p[2], 0x2f9e57, 18, 3, 20, 3.2);   // 世界樹根鞭破土
+      sparkBurst(new THREE.Vector3(d.p[0], 1.5, d.p[2]), 0x7dfa9e, 20, 6);
+    }
     if (c.el==='earth'){
       shakeCam(0.5);
+      spikeBurst(d.p[0], d.p[2], 0x8a6a3c, 14, 4, 22, 2.6);   // 岩刺
+      spawnSmoke(d.p[0], .4, d.p[2], {n:16, size:2.6, color:0xa08b62, rise:1.2, life:2.4, grow:1.8, opacity:.6, spread:6});
+      spawnDebris(d.p[0], 1, d.p[2], 0x8a6a3c, 12, {spd:9});
       if (d.wid !== undefined){
         for (let i=0;i<8;i++){
           const a = i/8*Math.PI*2;
@@ -1143,10 +1319,32 @@ function onGameEvent(d){
       sfx('boom');
       for (const [x,z] of d.targets) setTimeout(()=> meteorFX(x,z), rand(400,900));
     }
-    if (c.el==='metal'){ /* 持續斬擊由 host tick */ }
+    if (c.el==='metal'){ bladeOrbit(d.i, 6); }               // 環體飛劍演出
   }
   else if (d.k==='wallgone'){ removeWall(d.id); }
   else if (d.k==='aitake'){ const s=slots[d.i]; if(s){ s.ctrl='bot'; s.bot=null; } }
+  else if (d.k==='zone'){ spawnZoneVis(d.id, d.kind, d.x, d.z, d.r, d.dur); }
+  else if (d.k==='zoneend'){ const v=zoneVis.get(d.id); if(v){ v.until = 0; } }
+  else if (d.k==='steam'){ steamFX(d.x, d.z); }
+  else if (d.k==='boomfx'){ explosionFX(d.x, d.y, d.z, .7); }
+  else if (d.k==='barrel'){
+    const b = barrels.get(d.id);
+    if (b && !b.dead){
+      b.dead = true;
+      scene.remove(b.mesh); scene.remove(b.stripe);
+      const wi = worldMeshes.indexOf(b.mesh); if(wi>=0) worldMeshes.splice(wi,1);
+      const ci = colliders.indexOf(b.col); if(ci>=0) colliders.splice(ci,1);
+      explosionFX(b.x, .5, b.z, 1.4);
+      spawnDebris(b.x, .8, b.z, 0xb03428, 8, {spd:9});
+      // 衝擊波把自己震飛（本地物理）
+      const dd = Math.hypot(me.pos.x-b.x, me.pos.z-b.z);
+      if (dd < 8 && !me.dead){
+        const a = Math.atan2(me.pos.z-b.z, me.pos.x-b.x);
+        const kb = (1-dd/8)*14;
+        me.vel.x += Math.cos(a)*kb; me.vel.z += Math.sin(a)*kb; me.vel.y += (1-dd/8)*7;
+      }
+    }
+  }
 }
 
 /* 土牆 */
@@ -1174,9 +1372,313 @@ function spawnEarthWall(id, x, z, ry){
 }
 function removeWall(id){
   const w = wallsLive.get(id); if(!w) return;
+  for (const m of w.meshes) spawnDebris(m.position.x, m.position.y, m.position.z, 0x8a6a3c, 4, {spd:4});
   scene.remove(w.group);
   for (const c of w.colliders){ const i=colliders.indexOf(c); if(i>=0) colliders.splice(i,1); }
   wallsLive.delete(id);
+}
+
+/* ============================================================
+   迷你物理引擎（碎片 / 彈殼：重力、彈跳、AABB 碰撞、旋轉）
+   ============================================================ */
+const phys = [];
+const MAX_PHYS = 130;
+const debrisGeo = new THREE.BoxGeometry(1,1,1);
+function spawnDebris(x,y,z, color, n, opt={}){
+  for(let i=0;i<n;i++){
+    if (phys.length>=MAX_PHYS){ const old=phys.shift(); scene.remove(old.mesh); }
+    const s = rand(opt.min||.06, opt.max||.17);
+    const m = new THREE.Mesh(debrisGeo, new THREE.MeshStandardMaterial({color, roughness:.9}));
+    m.scale.set(s*rand(.6,1.5), s*rand(.6,1.5), s*rand(.6,1.5));
+    m.position.set(x,y,z);
+    m.castShadow = true;
+    scene.add(m);
+    const sp = opt.spd||6;
+    const v = new THREE.Vector3(rand(-sp,sp), rand(sp*.7,sp*1.6), rand(-sp,sp));
+    if (opt.vel) v.add(opt.vel);
+    phys.push({mesh:m, v, av:new THREE.Vector3(rand(-10,10),rand(-10,10),rand(-10,10)),
+      r:s*.6, bounce:opt.bounce??.42, die:now()+rand(2,3.6)});
+  }
+}
+function spawnCasing(){
+  if (!viewmodel) return;
+  const p = new THREE.Vector3(0.28,-0.16,-0.45).applyMatrix4(camera.matrixWorld);
+  if (phys.length>=MAX_PHYS){ const old=phys.shift(); scene.remove(old.mesh); }
+  const m = new THREE.Mesh(debrisGeo, new THREE.MeshStandardMaterial({color:0xc9a227, metalness:.4, roughness:.4}));
+  m.scale.set(.022,.022,.05);
+  m.position.copy(p);
+  scene.add(m);
+  const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+  phys.push({mesh:m, v:right.multiplyScalar(rand(1.6,2.6)).add(new THREE.Vector3(0,rand(1.6,2.6),0)),
+    av:new THREE.Vector3(rand(-20,20),rand(-20,20),rand(-20,20)), r:.03, bounce:.3, die:now()+2});
+}
+function physTick(dt){
+  const t = now();
+  for (let i=phys.length-1;i>=0;i--){
+    const p = phys[i], m = p.mesh;
+    p.v.y -= 22*dt;
+    m.position.addScaledVector(p.v, dt);
+    m.rotation.x += p.av.x*dt; m.rotation.y += p.av.y*dt; m.rotation.z += p.av.z*dt;
+    if (m.position.y < p.r){
+      m.position.y = p.r;
+      if (Math.abs(p.v.y) > 1.2) p.v.y *= -p.bounce; else p.v.y = 0;
+      p.v.x *= .72; p.v.z *= .72; p.av.multiplyScalar(.6);
+    } else {
+      // 側面撞硬物反彈（粗略）
+      for (const c of colliders){
+        if (m.position.x>c.x0-p.r && m.position.x<c.x1+p.r && m.position.z>c.z0-p.r && m.position.z<c.z1+p.r &&
+            m.position.y>c.y0 && m.position.y<c.y1){
+          const dx0=m.position.x-c.x0, dx1=c.x1-m.position.x, dz0=m.position.z-c.z0, dz1=c.z1-m.position.z;
+          const mn=Math.min(dx0,dx1,dz0,dz1);
+          if (mn===dx0){ m.position.x=c.x0-p.r; p.v.x=-Math.abs(p.v.x)*p.bounce; }
+          else if (mn===dx1){ m.position.x=c.x1+p.r; p.v.x=Math.abs(p.v.x)*p.bounce; }
+          else if (mn===dz0){ m.position.z=c.z0-p.r; p.v.z=-Math.abs(p.v.z)*p.bounce; }
+          else { m.position.z=c.z1+p.r; p.v.z=Math.abs(p.v.z)*p.bounce; }
+          break;
+        }
+      }
+    }
+    if (t > p.die){
+      m.scale.multiplyScalar(0.82);
+      if (m.scale.x < 0.008){ scene.remove(m); phys.splice(i,1); }
+    }
+  }
+}
+
+/* ---------- 煙霧 / 火花（billboard） ---------- */
+const smokes = [];
+const MAX_SMOKE = 100;
+function spawnSmoke(x,y,z, opt={}){
+  const n = opt.n||6;
+  for (let i=0;i<n;i++){
+    if (smokes.length>=MAX_SMOKE){ const old=smokes.shift(); scene.remove(old.sp); }
+    const mat = new THREE.SpriteMaterial({map:opt.flame?TEX.flame:TEX.puff, transparent:true, depthWrite:false,
+      color: opt.color??0xc8cdd2, blending: opt.flame||opt.add ? THREE.AdditiveBlending : THREE.NormalBlending});
+    const sp = new THREE.Sprite(mat);
+    const sc = rand(.5,1)* (opt.size||1.6);
+    sp.scale.set(sc,sc,1);
+    const spr = opt.spread??.8;
+    sp.position.set(x+rand(-spr,spr), y+rand(0,spr*.7), z+rand(-spr,spr));
+    scene.add(sp);
+    smokes.push({sp, mat, rise:(opt.rise??1.1)*rand(.6,1.3), grow:(opt.grow??.8)*rand(.7,1.3),
+      op:opt.opacity??.55, born:now(), life:(opt.life||2.2)*rand(.8,1.2),
+      vx:rand(-.3,.3)+(opt.vx||0), vz:rand(-.3,.3)+(opt.vz||0)});
+    mat.opacity = opt.opacity??.55;
+  }
+}
+function smokeTick(dt){
+  const t = now();
+  for (let i=smokes.length-1;i>=0;i--){
+    const s = smokes[i];
+    const k = (t-s.born)/s.life;
+    if (k>=1){ scene.remove(s.sp); smokes.splice(i,1); continue; }
+    s.sp.position.y += s.rise*dt;
+    s.sp.position.x += s.vx*dt; s.sp.position.z += s.vz*dt;
+    s.sp.scale.x += s.grow*dt; s.sp.scale.y += s.grow*dt;
+    s.mat.opacity = s.op*(1-k);
+  }
+}
+function sparkBurst(p, color, n=8, spd=3){
+  for(let i=0;i<n;i++){
+    if (smokes.length>=MAX_SMOKE){ const old=smokes.shift(); scene.remove(old.sp); }
+    const mat = new THREE.SpriteMaterial({map:TEX.spark, transparent:true, depthWrite:false,
+      color, blending:THREE.AdditiveBlending});
+    const sp = new THREE.Sprite(mat);
+    const sc = rand(.1,.28);
+    sp.scale.set(sc,sc,1); sp.position.copy(p);
+    scene.add(sp);
+    smokes.push({sp, mat, rise:rand(-1,2.4), grow:-sc*2.2, op:1, born:now(), life:rand(.18,.42),
+      vx:rand(-spd,spd), vz:rand(-spd,spd)});
+    mat.opacity = 1;
+  }
+}
+
+/* ---------- 動態特效（大招 / 波動 / 藤蔓 / 岩刺） ---------- */
+const specials = [];
+function addSpecial(life, update, cleanup){
+  specials.push({born:now(), life, update, cleanup});
+}
+function specialsTick(dt){
+  const t = now();
+  for (let i=specials.length-1;i>=0;i--){
+    const s = specials[i];
+    const k = (t-s.born)/s.life;
+    if (k>=1){ if(s.cleanup) s.cleanup(); specials.splice(i,1); continue; }
+    s.update(dt, k);
+  }
+}
+function spikeBurst(x, z, color, count, rMin, rMax, hMax){ // 地面竄出尖刺（藤蔓/岩刺）
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({color, roughness:.8});
+  for (let i=0;i<count;i++){
+    const a = Math.random()*Math.PI*2, r = rand(rMin, rMax);
+    const h = rand(hMax*.5, hMax);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(rand(.18,.45), h, 6), mat);
+    cone.position.set(x+Math.cos(a)*r, 0, z+Math.sin(a)*r);
+    cone.rotation.z = rand(-.25,.25); cone.rotation.x = rand(-.25,.25);
+    cone.userData.h = h;
+    cone.scale.y = 0.01; cone.castShadow = true;
+    group.add(cone);
+  }
+  scene.add(group);
+  addSpecial(2.4, (dt,k)=>{
+    const g = k<.2 ? k/.2 : (k>.75 ? 1-(k-.75)/.25 : 1);
+    for (const c of group.children){ c.scale.y = Math.max(0.01, g); c.position.y = c.userData.h*g/2; }
+  }, ()=> scene.remove(group));
+}
+function waveRing(x, z, color, maxR, life=1.6, h=5){ // 環形水牆/衝擊波
+  const geo = new THREE.CylinderGeometry(1, 1, h, 40, 1, true);
+  const mat = new THREE.MeshBasicMaterial({color, transparent:true, opacity:.5,
+    side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false});
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x, h/2, z);
+  scene.add(m);
+  addSpecial(life, (dt,k)=>{
+    const r = 1 + maxR*k;
+    m.scale.set(r, 1, r);
+    mat.opacity = .5*(1-k);
+  }, ()=> scene.remove(m));
+}
+function bladeOrbit(idx, dur=6){ // 金大招：環體飛劍（純視覺，傷害由主機 tick）
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({color:0xfff3c4, emissive:0xe8c84a, emissiveIntensity:.7, metalness:.3, roughness:.3});
+  const blades = [];
+  for (let i=0;i<10;i++){
+    const b = new THREE.Mesh(new THREE.BoxGeometry(.06,.5,.14), mat);
+    blades.push(b); group.add(b);
+  }
+  const L = new THREE.PointLight(0xe8c84a, 18, 10, 1.8); group.add(L);
+  scene.add(group);
+  addSpecial(dur, (dt,k)=>{
+    const s = slots[idx]; if(!s) return;
+    const p = idx===myIdx ? me.pos : s.pos;
+    group.position.set(p.x, p.y+1.2, p.z);
+    const t = now()*3.4;
+    blades.forEach((b,i)=>{
+      const a = t + i/10*Math.PI*2;
+      const r = 1.6 + Math.sin(t*.7+i)*0.4;
+      b.position.set(Math.cos(a)*r, Math.sin(t*1.3+i*2)*.5, Math.sin(a)*r);
+      b.rotation.set(a, a*1.3, a*.7);
+    });
+  }, ()=> scene.remove(group));
+}
+
+/* ---------- 爆炸 / 蒸汽 ---------- */
+function explosionFX(x, y, z, scale=1){
+  sparkBurst(new THREE.Vector3(x,y+.4,z), 0xffd080, 14, 6*scale);
+  spawnSmoke(x, y+.3, z, {flame:true, n:8, size:2.4*scale, rise:2, life:.5, grow:2.5, opacity:.95, spread:.7*scale});
+  spawnSmoke(x, y+.8, z, {n:10, size:2.6*scale, color:0x555a5e, rise:2.2, life:2.6, grow:1.6, opacity:.6, spread:1.1*scale});
+  spawnDebris(x, y+.5, z, 0x4a4a44, Math.round(8*scale), {spd:8*scale});
+  const L = new THREE.PointLight(0xffa040, 60*scale, 20*scale, 1.6);
+  L.position.set(x, y+1, z); scene.add(L);
+  addSpecial(.4, (dt,k)=>{ L.intensity = 60*scale*(1-k); }, ()=> scene.remove(L));
+  const d = camera ? camera.position.distanceTo(new THREE.Vector3(x,y,z)) : 99;
+  sfx('boom', clamp(1.2 - d/50, .1, 1));
+  shakeCam(clamp(.6 - d/40, 0, .6));
+}
+function steamFX(x, z){
+  spawnSmoke(x, .5, z, {n:16, size:2.8, color:0xe8eef2, rise:1.8, life:3.6, grow:1.4, opacity:.7, spread:1.4});
+  sfx('steam', .8);
+}
+
+/* ---------- 元素區域（火場/寒霜/泥沼）：主機裁決，全端渲染 ---------- */
+const hzones = new Map();       // 主機邏輯 id -> {kind,x,z,r,until,src}
+const zoneVis = new Map();      // 各端視覺 id -> {group, kind, until, flames}
+const smokeBlockers = [];       // 主機：蒸汽遮蔽 AI 視線 {mesh, until}
+let zoneSeq = 0;
+function hostAddZone(kind, x, z, r, dur, src){
+  // 五行反應
+  if (kind==='fire'){
+    for (const [id,zn] of hzones) if (zn.kind==='frost'){
+      const d2 = (zn.x-x)**2 + (zn.z-z)**2;
+      if (d2 < (zn.r+r)**2){ hostSteam((x+zn.x)/2, (z+zn.z)/2); return; }  // 水剋火：火被澆熄成蒸汽
+    }
+  }
+  if (kind==='frost'){
+    for (const [id,zn] of hzones) if (zn.kind==='fire'){
+      const d2 = (zn.x-x)**2 + (zn.z-z)**2;
+      if (d2 < (zn.r+r)**2){ hostEndZone(id); hostSteam(zn.x, zn.z); }     // 寒潮撲滅火場
+    }
+    for (const [wid,w] of wallsLive){                                       // 水+土 → 泥沼
+      const c = w.colliders[0]; if(!c) continue;
+      const wx=(c.x0+c.x1)/2, wz=(c.z0+c.z1)/2;
+      if ((wx-x)**2+(wz-z)**2 < (r+2)**2) hostAddZoneRaw('mud', wx, wz, 3.2, 9, src);
+    }
+  }
+  hostAddZoneRaw(kind, x, z, r, dur, src);
+}
+function hostAddZoneRaw(kind, x, z, r, dur, src){
+  const id = ++zoneSeq;
+  hzones.set(id, {kind, x, z, r, until:now()+dur, src});
+  const ev = {t:'ev', k:'zone', id, kind, x:+x.toFixed(1), z:+z.toFixed(1), r, dur};
+  bcast(ev); onGameEvent(ev);
+}
+function hostEndZone(id){
+  if (!hzones.delete(id)) return;
+  const ev = {t:'ev', k:'zoneend', id};
+  bcast(ev); onGameEvent(ev);
+}
+function hostSteam(x, z){
+  const ev = {t:'ev', k:'steam', x:+x.toFixed(1), z:+z.toFixed(1)};
+  bcast(ev); onGameEvent(ev);
+  const blocker = new THREE.Mesh(new THREE.SphereGeometry(2.6, 8, 6));
+  blocker.position.set(x, 1.5, z); blocker.visible = false;
+  scene.add(blocker);
+  smokeBlockers.push({mesh:blocker, until:now()+6});
+}
+function spawnZoneVis(id, kind, x, z, r, dur){
+  if (zoneVis.has(id)) return;
+  const group = new THREE.Group();
+  const flames = [];
+  if (kind==='fire'){
+    for (let i=0;i<Math.max(3, Math.round(r*2));i++){
+      const mat = new THREE.SpriteMaterial({map:TEX.flame, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending});
+      const sp = new THREE.Sprite(mat);
+      sp.position.set(x+rand(-r*.7,r*.7), .6, z+rand(-r*.7,r*.7));
+      sp.scale.set(1.2,1.5,1);
+      group.add(sp); flames.push(sp);
+    }
+    const L = new THREE.PointLight(0xff7830, 14, r*5, 1.8);
+    L.position.set(x, 1.2, z); group.add(L);
+  } else if (kind==='frost'){
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r*.85, r, 40),
+      new THREE.MeshBasicMaterial({color:0x7dd8ff, transparent:true, opacity:.5, side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false}));
+    ring.rotation.x = -Math.PI/2; ring.position.set(x, .06, z);
+    group.add(ring);
+    const ice = new THREE.MeshStandardMaterial({color:0xbfe8ff, emissive:0x38bdf8, emissiveIntensity:.35, roughness:.2});
+    for (let i=0;i<7;i++){
+      const a = Math.random()*Math.PI*2, rr = rand(r*.2, r*.9);
+      const c = new THREE.Mesh(new THREE.ConeGeometry(rand(.12,.3), rand(.5,1.2), 5), ice);
+      c.position.set(x+Math.cos(a)*rr, .3, z+Math.sin(a)*rr);
+      c.rotation.set(rand(-.4,.4), 0, rand(-.4,.4));
+      group.add(c);
+    }
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 36),
+      new THREE.MeshBasicMaterial({color:0x9fd8f0, transparent:true, opacity:.16, depthWrite:false}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .04, z);
+    group.add(disc);
+  } else if (kind==='mud'){
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
+      new THREE.MeshStandardMaterial({color:0x4a3a24, roughness:1, transparent:true, opacity:.9}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .05, z);
+    group.add(disc);
+  }
+  scene.add(group);
+  zoneVis.set(id, {group, kind, until:now()+dur, flames, x, z, r});
+}
+function zoneVisTick(){
+  const t = now();
+  for (const [id,v] of zoneVis){
+    if (t > v.until+.5){ scene.remove(v.group); zoneVis.delete(id); continue; }
+    if (v.kind==='fire'){
+      for (const sp of v.flames){
+        sp.scale.y = 1.3 + Math.sin(t*13 + sp.position.x*7)*.45;
+        sp.scale.x = 1.1 + Math.cos(t*11 + sp.position.z*5)*.3;
+      }
+      if (Math.random()<.15) spawnSmoke(v.x+rand(-v.r*.5,v.r*.5), 1.1, v.z+rand(-v.r*.5,v.r*.5),
+        {n:1, size:1.1, color:0x494c50, rise:1.4, life:1.8, grow:.9, opacity:.4});
+    }
+  }
 }
 
 /* 特效 */
@@ -1196,13 +1698,11 @@ function meteorFX(x, z){
   fxList.push({obj:m, mat:m.material, die:now()+2, meteor:{x,z}});
 }
 function deathPuff(p, team){
-  for(let i=0;i<8;i++){
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({color: team==='red'?0xff5a4e:0x4ea1ff, transparent:true, opacity:.85}));
-    s.position.set(p.x+rand(-.4,.4), p.y+rand(.3,1.6), p.z+rand(-.4,.4));
-    s.scale.set(.3,.3,1);
-    scene.add(s);
-    fxList.push({obj:s, mat:s.material, die:now()+rand(.3,.7)});
-  }
+  const col = team==='red'?0xff5a4e:0x4ea1ff;
+  sparkBurst(new THREE.Vector3(p.x, p.y+1.1, p.z), col, 12, 4);
+  spawnDebris(p.x, p.y+1, p.z, col, 5, {spd:5, min:.05, max:.12});          // 裝備碎片
+  spawnDebris(p.x, p.y+1.2, p.z, 0xd7a684, 3, {spd:4, min:.04, max:.09});   // 物理飛散
+  spawnSmoke(p.x, p.y+.8, p.z, {n:5, size:1.2, color:0x777a80, rise:1, life:1.6, grow:.9, opacity:.5, spread:.5});
   sfx('boom', .3);
 }
 let camShake = 0;
@@ -1237,6 +1737,7 @@ function botThink(s, dt){
     raycaster.far = dist;
     const blockers = [...worldMeshes];
     for (const w of wallsLive.values()) blockers.push(...w.meshes);
+    for (const sb of smokeBlockers) blockers.push(sb.mesh);   // 蒸汽/煙霧擋 AI 視線
     seeTarget = raycaster.intersectObjects(blockers, false).length === 0;
   }
 
@@ -1368,6 +1869,24 @@ function hostTick(dt){
   }
   // 土牆到期
   for (const [id,w] of wallsLive){ if (t > w.dieAt || w.hp<=0){ bcast({t:'ev',k:'wallgone',id}); removeWall(id); } }
+  // 元素區域：效果與到期
+  for (const [id,zn] of hzones){
+    if (t > zn.until){ hostEndZone(id); continue; }
+    for (const o of slots){
+      if (o.ctrl==='empty' || !o.alive) continue;
+      const src = slots[zn.src];
+      if (src && o.team === src.team) continue;   // 只影響施放者的敵隊
+      const p = o.idx===myIdx ? me.pos : o.pos;
+      if ((p.x-zn.x)**2 + (p.z-zn.z)**2 > zn.r*zn.r) continue;
+      if (zn.kind==='fire'){ o.fx.burn = Math.max(o.fx.burn, .8); o.fx.burnSrc = zn.src; }
+      else if (zn.kind==='frost'){ o.fx.slow = Math.max(o.fx.slow, .5); }
+      else if (zn.kind==='mud'){ o.fx.slow = Math.max(o.fx.slow, .5); }
+    }
+  }
+  // 蒸汽視線遮蔽到期
+  for (let i=smokeBlockers.length-1;i>=0;i--){
+    if (t > smokeBlockers[i].until){ scene.remove(smokeBlockers[i].mesh); smokeBlockers.splice(i,1); }
+  }
   // 賽事計時
   matchT -= dt;
   if (matchT <= 0){ hostEndMatch(); }
@@ -1669,9 +2188,11 @@ function frame(){
     }
     if (f.meteor){
       f.obj.position.y -= 55 * 0.016;
+      if (Math.random()<.5) spawnSmoke(f.obj.position.x, f.obj.position.y, f.obj.position.z,
+        {n:1, size:.9, color:0x54575c, rise:.2, life:1.1, grow:.8, opacity:.5, spread:.2});
       if (f.obj.position.y <= 0.5){
         ringFX(new THREE.Vector3(f.meteor.x,0.2,f.meteor.z), 0xff8040, 8, 0.7);
-        sfx('boom',.5); shakeCam(0.3);
+        explosionFX(f.meteor.x, .3, f.meteor.z, 1.2);
         scene.remove(f.obj); fxList.splice(i,1); continue;
       }
     }
@@ -1680,6 +2201,12 @@ function frame(){
   }
   if (flashLight) flashLight.intensity *= 0.75;
   if (viewmodel) viewmodel.position.z += (0-viewmodel.position.z)*Math.min(1,dt*14);
+
+  // 物理 / 煙霧 / 動態特效 / 元素區域
+  physTick(dt);
+  smokeTick(dt);
+  specialsTick(dt);
+  zoneVisTick();
 
   // 鏡頭震動
   if (camShake > 0.001){
