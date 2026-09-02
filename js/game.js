@@ -2238,11 +2238,14 @@ function botThink(s, dt){
   let speed = 4.0 * (fx.slow>0?0.6:1) * (fx.haste>0?1.4:1);
   const mv = new THREE.Vector3();
   if (seeTarget){
+    // 反應延遲：剛看到目標需 0.45~0.95 秒才開始射擊
+    if (!b.hadLOS){ b.hadLOS = true; b.aimDelay = rand(.45,.95); }
+    b.aimDelay -= dt;
     // 對準
     const want = Math.atan2(-(target.pos.x-s.pos.x), -(target.pos.z-s.pos.z));
     let dy = want - s.ry;
     while (dy>Math.PI) dy-=Math.PI*2; while(dy<-Math.PI) dy+=Math.PI*2;
-    s.ry += clamp(dy, -3.2*dt, 3.2*dt);
+    s.ry += clamp(dy, -2.6*dt, 2.6*dt);
     s.rx = clamp(Math.atan2((target.pos.y+1.25)-(s.pos.y+1.55), td), -.5,.5);
     // 橫移 + 距離控制
     b.strafe += dt;
@@ -2255,9 +2258,9 @@ function botThink(s, dt){
     // 開槍
     b.fireCd -= dt;
     if (b.reload > 0){ b.reload -= dt; if(b.reload<=0) b.ammo = g.mag; }
-    else if (Math.abs(dy) < 0.15 && b.fireCd<=0){
+    else if (Math.abs(dy) < 0.15 && b.fireCd<=0 && b.aimDelay<=0){
       const gat = s.fx.gat > 0;
-      b.fireCd = gat ? 0.07 : 60/g.rpm * (g.auto? rand(1,1.6) : rand(1.2,2));
+      b.fireCd = gat ? 0.09 : 60/g.rpm * (g.auto? rand(1.5,2.3) : rand(1.7,2.6));
       if (!gat){ b.ammo--; if (b.ammo<=0) b.reload = g.reload; }
       botShoot(s, target, td, gat ? GUNS[5] : g, gat);
     }
@@ -2267,6 +2270,7 @@ function botThink(s, dt){
     if (s.ult>=100 && td<20 && Math.random()<dt*0.5) hostUseUlt(s.idx);
     b.wp = null;
   } else {
+    b.hadLOS = false;
     // 沒視野：走向目標附近或亂逛
     if (!b.wp || b.thinkCd<=0){
       b.thinkCd = rand(2,5);
@@ -2305,7 +2309,7 @@ function botShoot(s, target, dist, g, gat=false){
   // 由 AI 準度決定是否命中
   const o = [s.pos.x, s.pos.y+1.5, s.pos.z];
   const err = 0.5 + dist*0.05;
-  const hitP = clamp((gat?0.4:0.62) - dist*0.008 - (target.moving?0.14:0), 0.06, 0.6);
+  const hitP = clamp((gat?0.26:0.36) - dist*0.007 - (target.moving?0.12:0), 0.04, 0.4);
   const aim = new THREE.Vector3(target.pos.x+rand(-err,err), target.pos.y+1.2+rand(-err*0.4,err*0.4), target.pos.z+rand(-err,err));
   const ev = {t:'fire', i:s.idx, o:[+o[0].toFixed(1),+o[1].toFixed(1),+o[2].toFixed(1)],
               e:[+aim.x.toFixed(1),+aim.y.toFixed(1),+aim.z.toFixed(1)]};
@@ -2313,7 +2317,7 @@ function botShoot(s, target, dist, g, gat=false){
   if (Math.random()<0.10) hostGroundHit(s.idx, aim.x+rand(-2,2), 0.3, aim.z+rand(-2,2)); // AI 也會改造場地
   for (let p=0;p<g.pellets;p++){
     if (Math.random() < hitP){
-      const part = Math.random()<0.12 ? 'head':'body';
+      const part = Math.random()<0.06 ? 'head':'body';
       hostApplyHit(s.idx, target.idx, part, gat?5:s.gun, dist);
     }
   }
@@ -2433,7 +2437,7 @@ function startMatch(){
   $('elemtag').innerHTML = `<span style="color:${e.css}">${e.glyph} ${e.name} · ${e.fx}</span>`;
   $('chipSkill').textContent = 'E · '+CHARS[slots[myIdx].char].skill;
   centerMsg('作戰開始 — '+(slots[myIdx].team==='red'?'赤焰隊':'蒼瀾隊'));
-  if (IS_TOUCH){ $('touchUI').classList.add('on'); }
+  if (IS_TOUCH){ $('touchUI').classList.add('on'); updateTouchGunUI(); }
   else $('pauseHint').classList.remove('hidden');
   updateAmmoUI();
   lastFrame = now();
@@ -2561,6 +2565,14 @@ function updateHUD(){
   cu.classList.toggle('charged', s.ult>=100 || s.fx.gat>0);
   const gatOn = s.fx.gat>0;
   if (gatOn !== updateHUD._gat){ updateHUD._gat = gatOn; updateAmmoUI(); }
+  // 觸控按鈕冷卻回饋
+  if (IS_TOUCH){
+    const bs = $('btnSkillT'), bu = $('btnUltT');
+    if (bs) bs.style.opacity = cd>0 ? .38 : 1;
+    const rdy = s.ult>=100 || gatOn;
+    if (bu){ bu.style.opacity = rdy ? 1 : .5;
+      bu.style.boxShadow = rdy ? '0 0 16px rgba(232,121,249,.85)' : 'none'; }
+  }
   if (netMode!=='solo') $('netstat').textContent =
     (netMode==='host'?'房主 · ':'') + '房間 '+roomCodeStr+' · '+slots.filter(x=>x.ctrl==='net').length+' 位連線玩家';
 }
@@ -2586,7 +2598,14 @@ addEventListener('keydown', e=>{
 function switchGun(i){
   if (i===me.gun) return;
   me.gun=i; me.ammo=GUNS[i].mag; me.reloading=0; me.zoomed=false;
-  rebuildViewmodel(); updateAmmoUI();
+  rebuildViewmodel(); updateAmmoUI(); updateTouchGunUI();
+}
+function updateTouchGunUI(){
+  if (!IS_TOUCH) return;
+  const zb = $('btnZoomT');
+  if (zb) zb.style.display = GUNS[me.gun].zoom ? '' : 'none';   // 鏡鈕只在狙擊時顯示
+  const gb = $('btnGunT');
+  if (gb) gb.textContent = ['手槍','衝鋒','突擊','霰彈','狙擊'][me.gun] || '換槍';
 }
 function doSkill(){
   if (isHost) localSkill();

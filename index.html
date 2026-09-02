@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>五行槍神錄 3D · Wuxing Strike</title>
 <style>
   :root{
@@ -145,7 +145,8 @@
   #touchUI.on{display:block}
   .tbtn{position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;
     border-radius:50%;background:rgba(18,26,42,.55);border:1.5px solid rgba(255,255,255,.3);color:#fff;
-    font-weight:700;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none;letter-spacing:.05em}
+    font-weight:700;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none;letter-spacing:.05em;
+    -webkit-touch-callout:none;transition:opacity .15s}
   .tbtn:active{filter:brightness(1.5)}
   #btnFireT{right:22px;bottom:86px;width:92px;height:92px;font-size:15px;
     background:rgba(200,60,50,.45);border-color:rgba(255,130,110,.65)}
@@ -167,6 +168,17 @@
   body.touch #topbar{gap:12px;padding:5px 14px}
   body.touch #topbar #tRed, body.touch #topbar #tBlue{font-size:17px}
   body.touch #topbar #timer{font-size:14px}
+
+  /* iPhone 瀏海機底部安全區：按鍵整體上移避開 home 條 */
+  @supports (bottom: env(safe-area-inset-bottom)){
+    #btnFireT{bottom:calc(86px + env(safe-area-inset-bottom))}
+    #btnSkillT{bottom:calc(44px + env(safe-area-inset-bottom))}
+    #btnUltT{bottom:calc(158px + env(safe-area-inset-bottom))}
+    #btnJumpT{bottom:calc(200px + env(safe-area-inset-bottom))}
+    #btnGunT{bottom:calc(96px + env(safe-area-inset-bottom))}
+    #btnZoomT{bottom:calc(168px + env(safe-area-inset-bottom))}
+    body.touch #bl{bottom:calc(200px + env(safe-area-inset-bottom))}
+  }
 
   /* ===== 狙擊鏡 ===== */
   #scopeOv{position:fixed;inset:0;z-index:12;pointer-events:none;
