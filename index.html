@@ -138,6 +138,35 @@
   #pauseHint p{color:#8fa3c0;line-height:2;text-align:center;font-size:14px}
   #netstat{position:fixed;left:14px;top:12px;z-index:11;font-size:11.5px;color:#7d90ad;letter-spacing:.05em;
     background:rgba(8,11,17,.6);padding:5px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.07)}
+
+  /* ===== 手機觸控 UI ===== */
+  #c3d{touch-action:none}
+  #touchUI{position:fixed;inset:0;z-index:11;pointer-events:none;display:none}
+  #touchUI.on{display:block}
+  .tbtn{position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;
+    border-radius:50%;background:rgba(18,26,42,.55);border:1.5px solid rgba(255,255,255,.3);color:#fff;
+    font-weight:700;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none;letter-spacing:.05em}
+  .tbtn:active{filter:brightness(1.5)}
+  #btnFireT{right:22px;bottom:86px;width:92px;height:92px;font-size:15px;
+    background:rgba(200,60,50,.45);border-color:rgba(255,130,110,.65)}
+  #btnSkillT{right:128px;bottom:44px;width:62px;height:62px;font-size:12px;border-color:rgba(103,232,249,.6)}
+  #btnUltT{right:136px;bottom:158px;width:62px;height:62px;font-size:12px;border-color:rgba(232,121,249,.7)}
+  #btnJumpT{right:34px;bottom:200px;width:56px;height:56px;font-size:12px}
+  #btnGunT{right:212px;bottom:96px;width:52px;height:52px;font-size:11px}
+  #btnZoomT{right:216px;bottom:168px;width:48px;height:48px;font-size:11px}
+  #joyBase{position:fixed;width:112px;height:112px;border-radius:50%;border:2px solid rgba(255,255,255,.3);
+    background:rgba(255,255,255,.07);display:none;z-index:11;pointer-events:none;transform:translate(-50%,-50%)}
+  #joyKnob{position:fixed;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.4);
+    display:none;z-index:11;pointer-events:none;transform:translate(-50%,-50%)}
+  body.touch #guns{display:none}
+  body.touch #br{bottom:auto;top:60px;right:12px}
+  body.touch #ammo{font-size:24px}
+  body.touch #killfeed{top:132px;right:12px}
+  body.touch #bl{width:190px;left:12px;bottom:200px}
+  body.touch .chip{padding:4px 8px;font-size:10.5px}
+  body.touch #topbar{gap:12px;padding:5px 14px}
+  body.touch #topbar #tRed, body.touch #topbar #tBlue{font-size:17px}
+  body.touch #topbar #timer{font-size:14px}
 </style>
 </head>
 <body>
@@ -233,6 +262,17 @@
   <h2>點 擊 繼 續</h2>
   <p>點擊畫面鎖定滑鼠 · <kbd>Tab</kbd> 計分板 · <kbd>Esc</kbd> 釋放滑鼠</p>
 </div>
+
+<!-- 手機觸控 -->
+<div id="touchUI">
+  <div class="tbtn" id="btnFireT">開火</div>
+  <div class="tbtn" id="btnSkillT">技能</div>
+  <div class="tbtn" id="btnUltT">大招</div>
+  <div class="tbtn" id="btnJumpT">跳</div>
+  <div class="tbtn" id="btnGunT">換槍</div>
+  <div class="tbtn" id="btnZoomT">鏡</div>
+</div>
+<div id="joyBase"></div><div id="joyKnob"></div>
 
 <div id="flash"></div>
 <div id="ultcut"><div class="band"></div><div id="ulttext"></div><div id="ultsub"></div></div>

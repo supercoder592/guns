@@ -44,6 +44,8 @@ const rand = (a,b)=> a + Math.random()*(b-a);
 const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
 const $ = id => document.getElementById(id);
 const now = ()=> performance.now()/1000;
+const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints||0) > 0;
+if (IS_TOUCH) document.body.classList.add('touch');
 
 /* ------------------------- 音效（WebAudio 合成） ------------------------- */
 let AC = null;
@@ -826,8 +828,10 @@ function updateLocal(dt){
   if (me.dead){ return; }
   const fx = slot.fx;
   const rooted = fx.root>0 || fx.stun>0;
+  const touchMove = IS_TOUCH && touchIn.moveId !== null;
+  const touchMag = touchMove ? Math.hypot(touchIn.mvx, touchIn.mvy) : 0;
   let speed = 4.6;
-  if (keys.ShiftLeft && !me.zoomed) speed = 6.4;
+  if ((keys.ShiftLeft || (touchMove && touchMag > 0.92)) && !me.zoomed) speed = 6.4; // 搖桿推到底=疾跑
   if (fx.slow>0) speed *= 0.6;
   if (fx.haste>0) speed *= 1.5;
   if (rooted) speed = 0;
@@ -839,6 +843,7 @@ function updateLocal(dt){
   if (keys.KeyS) wish.sub(f);
   if (keys.KeyD) wish.add(r);
   if (keys.KeyA) wish.sub(r);
+  if (touchMove){ wish.addScaledVector(f, -touchIn.mvy).addScaledVector(r, touchIn.mvx); }
   if (wish.lengthSq()>0) wish.normalize().multiplyScalar(speed);
   // 平滑加速
   me.vel.x += (wish.x-me.vel.x)*Math.min(1, dt*12);
@@ -2057,7 +2062,8 @@ function startMatch(){
   $('elemtag').innerHTML = `<span style="color:${e.css}">${e.glyph} ${e.name} · ${e.fx}</span>`;
   $('chipSkill').textContent = 'E · '+CHARS[slots[myIdx].char].skill;
   centerMsg('作戰開始 — '+(slots[myIdx].team==='red'?'赤焰隊':'蒼瀾隊'));
-  $('pauseHint').classList.remove('hidden');
+  if (IS_TOUCH){ $('touchUI').classList.add('on'); }
+  else $('pauseHint').classList.remove('hidden');
   updateAmmoUI();
   lastFrame = now();
   requestAnimationFrame(frame);
@@ -2192,16 +2198,22 @@ addEventListener('keydown', e=>{
   if (!started) return;
   if (e.code==='Tab'){ e.preventDefault(); $('board').classList.remove('hidden'); renderBoard(); }
   if (e.code==='KeyR') startReload();
-  if (e.code==='KeyE'){
-    if (isHost) localSkill();
-    else { const s=slots[myIdx]; if (localSkillCd<=0 && !me.dead){ localSkillCd = CHARS[s.char].skillCd; localSkill(); } }
-  }
+  if (e.code==='KeyE') doSkill();
   if (e.code==='KeyQ') localUlt();
   if (e.code.startsWith('Digit')){
     const i = +e.code.slice(5)-1;
-    if (GUNS[i] && i!==me.gun){ me.gun=i; me.ammo=GUNS[i].mag; me.reloading=0; me.zoomed=false; rebuildViewmodel(); updateAmmoUI(); }
+    if (GUNS[i]) switchGun(i);
   }
 });
+function switchGun(i){
+  if (i===me.gun) return;
+  me.gun=i; me.ammo=GUNS[i].mag; me.reloading=0; me.zoomed=false;
+  rebuildViewmodel(); updateAmmoUI();
+}
+function doSkill(){
+  if (isHost) localSkill();
+  else { const s=slots[myIdx]; if (localSkillCd<=0 && !me.dead){ localSkillCd = CHARS[s.char].skillCd; localSkill(); } }
+}
 addEventListener('keyup', e=>{ keys[e.code]=false; if(e.code==='Tab') $('board').classList.add('hidden'); });
 addEventListener('mousemove', e=>{
   if (!locked || !started) return;
@@ -2210,16 +2222,81 @@ addEventListener('mousemove', e=>{
   me.pitch = clamp(me.pitch - e.movementY*sens, -1.45, 1.45);
 });
 addEventListener('mousedown', e=>{
-  if (!started) return;
+  if (!started || IS_TOUCH) return;
   if (!locked){ $('c3d').requestPointerLock && $('c3d').requestPointerLock(); return; }
   if (e.button===0) mouseDownL = true;
   if (e.button===2) me.zoomed = !me.zoomed && GUNS[me.gun].zoom;
 });
+
+/* ---------- 手機觸控：左半搖桿移動、右半滑動瞄準、按鈕操作 ---------- */
+const touchIn = { moveId:null, aimId:null, bx:0, by:0, lx:0, ly:0, mvx:0, mvy:0 };
+if (IS_TOUCH){
+  const cv = $('c3d');
+  const joyB = $('joyBase'), joyK = $('joyKnob');
+  cv.addEventListener('touchstart', e=>{
+    if (!started) return;
+    e.preventDefault();
+    for (const t of e.changedTouches){
+      if (t.clientX < innerWidth*0.45 && touchIn.moveId===null){
+        touchIn.moveId = t.identifier;
+        touchIn.bx = t.clientX; touchIn.by = t.clientY;
+        joyB.style.display = joyK.style.display = 'block';
+        joyB.style.left = joyK.style.left = t.clientX+'px';
+        joyB.style.top  = joyK.style.top  = t.clientY+'px';
+      } else if (touchIn.aimId===null){
+        touchIn.aimId = t.identifier;
+        touchIn.lx = t.clientX; touchIn.ly = t.clientY;
+      }
+    }
+  }, {passive:false});
+  cv.addEventListener('touchmove', e=>{
+    if (!started) return;
+    e.preventDefault();
+    for (const t of e.changedTouches){
+      if (t.identifier === touchIn.moveId){
+        let dx = t.clientX-touchIn.bx, dy = t.clientY-touchIn.by;
+        const len = Math.hypot(dx,dy), max = 52;
+        if (len > max){ dx = dx/len*max; dy = dy/len*max; }
+        touchIn.mvx = dx/max; touchIn.mvy = dy/max;
+        joyK.style.left = (touchIn.bx+dx)+'px';
+        joyK.style.top  = (touchIn.by+dy)+'px';
+      } else if (t.identifier === touchIn.aimId){
+        const sens = 0.0045 * (me.zoomed?0.45:1);
+        me.yaw   -= (t.clientX-touchIn.lx)*sens;
+        me.pitch  = clamp(me.pitch-(t.clientY-touchIn.ly)*sens, -1.45, 1.45);
+        touchIn.lx = t.clientX; touchIn.ly = t.clientY;
+      }
+    }
+  }, {passive:false});
+  const endT = e=>{
+    for (const t of e.changedTouches){
+      if (t.identifier === touchIn.moveId){
+        touchIn.moveId = null; touchIn.mvx = touchIn.mvy = 0;
+        joyB.style.display = joyK.style.display = 'none';
+      }
+      if (t.identifier === touchIn.aimId) touchIn.aimId = null;
+    }
+  };
+  cv.addEventListener('touchend', endT);
+  cv.addEventListener('touchcancel', endT);
+  // 按鈕
+  const bind = (id, down, up)=>{
+    const el = $(id);
+    el.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); down(); }, {passive:false});
+    if (up) el.addEventListener('touchend', e=>{ e.preventDefault(); up(); }, {passive:false});
+  };
+  bind('btnFireT', ()=>{ mouseDownL = true; }, ()=>{ mouseDownL = false; });
+  bind('btnSkillT', ()=> doSkill());
+  bind('btnUltT', ()=> localUlt());
+  bind('btnJumpT', ()=>{ keys.Space = true; setTimeout(()=> keys.Space=false, 120); });
+  bind('btnGunT', ()=> switchGun((me.gun+1)%GUNS.length));
+  bind('btnZoomT', ()=>{ me.zoomed = !me.zoomed && GUNS[me.gun].zoom; });
+}
 addEventListener('mouseup', e=>{ if(e.button===0) mouseDownL=false; });
 addEventListener('contextmenu', e=> e.preventDefault());
 document.addEventListener('pointerlockchange', ()=>{
   locked = document.pointerLockElement === $('c3d');
-  if (started) $('pauseHint').classList.toggle('hidden', locked);
+  if (started && !IS_TOUCH) $('pauseHint').classList.toggle('hidden', locked);
 });
 $('pauseHint').onclick = ()=>{ $('c3d').requestPointerLock && $('c3d').requestPointerLock();
   if (!document.pointerLockElement) $('pauseHint').classList.add('hidden'); };
