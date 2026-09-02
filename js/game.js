@@ -739,6 +739,54 @@ function buildWorld(){
     p.position.set(x,.75,z); p.rotation.set(-.35,ry,0);
     p.castShadow=p.receiveShadow=true; scene.add(p); worldMeshes.push(p);
   }
+
+  /* ===== 加密度：散落掩體群（固定種子亂數，確保連線各端地圖一致） ===== */
+  let mseed = 1337;
+  const mrand = (a,b)=>{ mseed = (mseed*1664525 + 1013904223)>>>0; return a + (mseed/4294967296)*(b-a); };
+  const matRockP = new THREE.MeshStandardMaterial({map:TEX.rock, roughness:.95});
+  const clusters = [
+    [-22,14],[22,-16],[-8,12],[8,-12],[-16,-26],[16,26],[-38,38],[38,-40],
+    [-44,16],[44,-20],[-30,44],[30,-46],[-4,-14],[4,16],[24,44],[-24,-44],
+    [50,18],[-50,-18],[-52,32],[52,-32],[-18,40],[18,-42],[10,-16],[-10,18],
+    [34,34],[-34,-34],[46,2],[-46,8],[28,-8],[-28,10],
+  ];
+  for (const [cx,cz] of clusters){
+    const kind = Math.floor(mrand(0,3));
+    if (kind===0){ // 木箱組（可跳上）
+      box(1.3,1.3,1.3, matWood, cx+mrand(-.5,.5), .65, cz+mrand(-.5,.5));
+      if (mrand(0,1)<.7) box(1.3,1.3,1.3, matWood, cx+1.4, .65, cz+mrand(-.4,.4));
+      if (mrand(0,1)<.45) box(1.3,1.3,1.3, matWood, cx+.7, 1.95, cz);
+    } else if (kind===1){ // 護欄＋油桶
+      const rot = mrand(0,1)<.5;
+      box(rot?0.5:3.4, 1.05, rot?3.4:0.5, matJersey, cx, .52, cz);
+      const bm = new THREE.Mesh(barrelG, bmat);
+      bm.position.set(cx+(rot?1.2:0), .55, cz+(rot?0:1.2));
+      bm.castShadow=bm.receiveShadow=true; scene.add(bm); worldMeshes.push(bm);
+      addCollider(bm.position.x, bm.position.z, .9, .9, 1.1);
+    } else { // 矮石牆＋碎石
+      box(2.6, mrand(.9,1.3), 0.55, matRockP, cx, .55, cz);
+      box(mrand(.5,.8), mrand(.35,.55), mrand(.5,.8), matRockP, cx+1.8, .25, cz+mrand(-.5,.5));
+    }
+  }
+  // 廢墟旁瓦礫堆
+  for (const [rx,rz] of [[-3.5,37],[4,43],[3.5,-37],[-4,-43],[-6,39],[6,-39]]){
+    for (let i=0;i<3;i++)
+      box(mrand(.5,.95), mrand(.35,.7), mrand(.5,.95), matRockP,
+          rx+mrand(-.8,.8), mrand(.2,.4), rz+mrand(-.8,.8));
+  }
+  // 水管堆（橫置圓管×3 疊放）
+  const pipeMat = new THREE.MeshStandardMaterial({color:0x7a8288, roughness:.5, metalness:.5});
+  for (const [px,pz,rot] of [[-20,-36,0],[20,38,1]]){
+    for (const [ox,oy] of [[-.5,.45],[.5,.45],[0,1.25]]){
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(.45,.45,4.6,12), pipeMat);
+      pipe.rotation.z = rot? 0 : Math.PI/2;
+      pipe.rotation.x = rot? Math.PI/2 : 0;
+      pipe.position.set(px+(rot?ox:0), oy, pz+(rot?0:ox));
+      pipe.castShadow = pipe.receiveShadow = true;
+      scene.add(pipe); worldMeshes.push(pipe);
+    }
+    addCollider(px, pz, rot?1.9:4.6, rot?4.6:1.9, 1.7);
+  }
 }
 function towerAt(x,z, mat, flagColor){
   box(4,5,4, mat, x, 2.5, z);
