@@ -447,9 +447,50 @@ function buildTextures(){
     const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
     return t;
   };
-  TEX.puff  = radialTex([[0,'rgba(255,255,255,0.95)'],[0.4,'rgba(255,255,255,0.5)'],[1,'rgba(255,255,255,0)']]);
   TEX.flame = radialTex([[0,'rgba(255,245,190,1)'],[0.25,'rgba(255,180,60,0.95)'],[0.6,'rgba(255,90,30,0.55)'],[1,'rgba(255,60,20,0)']]);
   TEX.spark = radialTex([[0,'rgba(255,255,255,1)'],[0.3,'rgba(255,230,160,0.8)'],[1,'rgba(255,200,80,0)']]);
+  // 寫實斑駁煙霧（多個柔邊圓斑疊加）
+  {
+    const cv = document.createElement('canvas'); cv.width=cv.height=128;
+    const c = cv.getContext('2d');
+    for (let i=0;i<16;i++){
+      const x = 64+rand(-30,30), y = 64+rand(-30,30), r = rand(12,34);
+      const g = c.createRadialGradient(x,y,1,x,y,r);
+      const a = rand(.1,.3);
+      g.addColorStop(0,`rgba(255,255,255,${a})`); g.addColorStop(1,'rgba(255,255,255,0)');
+      c.fillStyle=g; c.fillRect(0,0,128,128);
+    }
+    TEX.puff = new THREE.CanvasTexture(cv); TEX.puff.colorSpace = THREE.SRGBColorSpace;
+  }
+  // 槍口火光（星芒）
+  {
+    const cv = document.createElement('canvas'); cv.width=cv.height=128;
+    const c = cv.getContext('2d');
+    c.translate(64,64);
+    for (let i=0;i<8;i++){
+      c.rotate(Math.PI/4);
+      const g = c.createLinearGradient(0,0,58,0);
+      g.addColorStop(0,'rgba(255,240,200,0.95)'); g.addColorStop(1,'rgba(255,180,80,0)');
+      c.fillStyle=g;
+      c.beginPath(); c.moveTo(0,-3.5); c.lineTo(rand(30,58),0); c.lineTo(0,3.5); c.closePath(); c.fill();
+    }
+    const g2 = c.createRadialGradient(0,0,1,0,0,20);
+    g2.addColorStop(0,'rgba(255,255,240,1)'); g2.addColorStop(1,'rgba(255,200,120,0)');
+    c.fillStyle=g2; c.beginPath(); c.arc(0,0,20,0,7); c.fill();
+    TEX.flash = new THREE.CanvasTexture(cv); TEX.flash.colorSpace = THREE.SRGBColorSpace;
+  }
+  // 焦痕 / 彈孔
+  {
+    const cv = document.createElement('canvas'); cv.width=cv.height=64;
+    const c = cv.getContext('2d');
+    const g = c.createRadialGradient(32,32,2,32,32,30);
+    g.addColorStop(0,'rgba(0,0,0,0.95)'); g.addColorStop(.5,'rgba(10,8,6,0.7)'); g.addColorStop(1,'rgba(0,0,0,0)');
+    c.fillStyle=g; c.fillRect(0,0,64,64);
+    for (let i=0;i<24;i++){ c.fillStyle=`rgba(0,0,0,${rand(.2,.6)})`;
+      const a=Math.random()*Math.PI*2, r=rand(16,30);
+      c.beginPath(); c.arc(32+Math.cos(a)*r,32+Math.sin(a)*r,rand(1,3),0,7); c.fill(); }
+    TEX.scorch = new THREE.CanvasTexture(cv); TEX.scorch.colorSpace = THREE.SRGBColorSpace;
+  }
 }
 function camoTex(a,b,cc,d){
   return makeCanvasTex((c,w,h)=>{
@@ -837,7 +878,7 @@ function updateLocal(dt){
   if (rooted) speed = 0;
 
   const f = new THREE.Vector3(-Math.sin(me.yaw),0,-Math.cos(me.yaw));
-  const r = new THREE.Vector3(f.z,0,-f.x);
+  const r = new THREE.Vector3(-f.z,0,f.x);   // 正確的右方向（原本鏡像，左右顛倒）
   const wish = new THREE.Vector3();
   if (keys.KeyW) wish.add(f);
   if (keys.KeyS) wish.sub(f);
@@ -940,10 +981,16 @@ function tryFire(){
         spawnSmoke(h.point.x, h.point.y, h.point.z, {n:2, size:.5, color:0x883333, rise:.4, life:.6, grow:.5, opacity:.5, spread:.15});
       } else {
         impactElem(h.point, dir, myEl, false);
+        if (h.face){  // 彈孔焦痕（依表面法向貼附）
+          const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+          addDecal(h.point, n, rand(.04,.07), 20);
+        }
         if (p===0) reportGroundHit(h.point);   // 子彈屬性改造場地（每發判定一次）
       }
     }
-    tracer(origin.clone().addScaledVector(dir,0.6).add(new THREE.Vector3(0,-0.12,0)), end, elColor);
+    const muzzle = camera.localToWorld(new THREE.Vector3(0.18, -0.16, -0.7));
+    spawnBolt(muzzle, end, myEl);              // 可見元素彈丸
+    tracer(muzzle, end, elColor);
     // 廣播開火（讓別人看到曳光）
     netFire(origin, end);
   }
@@ -1016,15 +1063,30 @@ function impactFX(p, color){
 }
 function remoteTracer(o, e, idx){
   const s = slots[idx];
-  const col = s ? EL[CHARS[s.char].el].color : 0xfff2c0;
-  tracer(new THREE.Vector3(o[0],o[1],o[2]), new THREE.Vector3(e[0],e[1],e[2]), col);
-  const d = camera.position.distanceTo(new THREE.Vector3(o[0],o[1],o[2]));
+  const el = s ? CHARS[s.char].el : 'metal';
+  const from = new THREE.Vector3(o[0],o[1],o[2]), to = new THREE.Vector3(e[0],e[1],e[2]);
+  spawnBolt(from, to, el);
+  tracer(from, to, EL[el].color);
+  sparkBurst(from, 0xffd9a0, 3, 1.2);   // 遠端槍口火光
+  const d = camera.position.distanceTo(from);
   if (d < 60) sfx('shot', clamp(1-d/60, .05, .6));
 }
-let flashLight = null, viewmodel = null, vmMats = [];
+let flashLight = null, viewmodel = null, vmMats = [], muzzleSprite = null, muzzleT = 0;
 function muzzleFlash(){
   if (flashLight){ flashLight.intensity = 3; }
   if (viewmodel) viewmodel.position.z = 0.09;
+  if (muzzleSprite){
+    muzzleSprite.visible = true;
+    muzzleSprite.material.rotation = Math.random()*Math.PI*2;
+    const s = rand(.22,.4);
+    muzzleSprite.scale.set(s,s,1);
+    muzzleT = now();
+  }
+  // 槍口硝煙
+  if (Math.random()<.35 && camera){
+    const mp = camera.localToWorld(new THREE.Vector3(0.18,-0.15,-0.72));
+    spawnSmoke(mp.x, mp.y, mp.z, {n:1, size:.3, color:0xaeb2b6, rise:.5, life:.9, grow:.7, opacity:.3, spread:.03});
+  }
 }
 function buildViewmodel(){
   viewmodel = new THREE.Group();
@@ -1033,6 +1095,10 @@ function buildViewmodel(){
   flashLight = new THREE.PointLight(0xffc873, 0, 7);
   flashLight.position.set(0.25, -0.2, -0.9);
   camera.add(flashLight);
+  muzzleSprite = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.flash, transparent:true,
+    depthWrite:false, depthTest:false, blending:THREE.AdditiveBlending, color:0xffe2b0}));
+  muzzleSprite.visible = false;
+  camera.add(muzzleSprite);
   rebuildViewmodel();
 }
 function rebuildViewmodel(){
@@ -1053,6 +1119,11 @@ function rebuildViewmodel(){
   viewmodel.add(body,barrel,grip,mag,trim);
   if (g.zoom){ const scope = new THREE.Mesh(new THREE.CylinderGeometry(.024,.024,.14,8), matD);
     scope.rotation.x = Math.PI/2; scope.position.set(0,.065,-.26); viewmodel.add(scope); }
+  if (muzzleSprite){
+    muzzleSprite.position.set(0.22, -0.19, -0.38-(len+0.2)*0.8);
+    const ec = new THREE.Color(e.color).lerp(new THREE.Color(0xffffff), 0.55);
+    muzzleSprite.material.color = ec;   // 槍口焰帶屬性色調
+  }
   viewmodel.position.set(0.22,-0.2,-0.38);
   viewmodel.rotation.y = 0.05;
   viewmodel.rotation.x = 0.02;
@@ -1564,6 +1635,82 @@ function sparkBurst(p, color, n=8, spd=3){
   }
 }
 
+/* ---------- 元素彈丸（可見的飛行子彈＋屬性尾跡） ---------- */
+const bolts = [];
+const MAX_BOLTS = 60;
+const BOLT_CFG = {
+  metal:{ core:0xfffbe8, glow:0xe8c84a, size:.10, speed:190 },
+  wood: { core:0xeaffec, glow:0x4ade80, size:.11, speed:150 },
+  water:{ core:0xf2ffff, glow:0x45c8ff, size:.12, speed:150 },
+  fire: { core:0xfff1c8, glow:0xff8040, size:.15, speed:140 },
+  earth:{ core:0xfff3dc, glow:0xd8a45c, size:.12, speed:150 },
+};
+function spawnBolt(from, to, el){
+  const cfg = BOLT_CFG[el] || BOLT_CFG.metal;
+  if (bolts.length >= MAX_BOLTS){ const old = bolts.shift(); scene.remove(old.group); }
+  const group = new THREE.Group();
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color:cfg.glow,
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+  glow.scale.set(cfg.size*4.2, cfg.size*4.2, 1);
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color:cfg.core,
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+  core.scale.set(cfg.size*1.6, cfg.size*1.6, 1);
+  group.add(glow, core);
+  group.position.copy(from);
+  scene.add(group);
+  const dir = to.clone().sub(from);
+  const dist = dir.length();
+  dir.normalize();
+  bolts.push({group, dir, el, speed:cfg.speed, left:dist, trailT:0});
+}
+function boltTrail(b){
+  const p = b.group.position;
+  if (smokes.length >= MAX_SMOKE) return;
+  if (b.el==='fire'){
+    spawnSmoke(p.x, p.y, p.z, {flame:true, n:1, size:.34, rise:.3, life:.22, grow:-.6, opacity:.9, spread:.02});
+  } else if (b.el==='water'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.3, color:0x9adcff, add:true, rise:-.2, life:.3, grow:.3, opacity:.4, spread:.03});
+  } else if (b.el==='metal'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.16, color:0xffe9a0, add:true, rise:0, life:.16, grow:-.4, opacity:.85, spread:.02});
+  } else if (b.el==='wood'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.2, color:0x7dfa9e, add:true, rise:.15, life:.28, grow:-.3, opacity:.6, spread:.05});
+  } else {
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.24, color:0xb59a6a, rise:.1, life:.4, grow:.5, opacity:.35, spread:.04});
+  }
+}
+function boltsTick(dt){
+  for (let i=bolts.length-1;i>=0;i--){
+    const b = bolts[i];
+    const step = Math.min(b.speed*dt, b.left);
+    b.group.position.addScaledVector(b.dir, step);
+    b.left -= step;
+    b.trailT -= dt;
+    if (b.trailT <= 0){ b.trailT = 0.016; boltTrail(b); }
+    if (b.left <= 0.01){ scene.remove(b.group); bolts.splice(i,1); }
+  }
+}
+
+/* ---------- 彈孔 / 焦痕貼花 ---------- */
+const decals = [];
+function addDecal(p, n, size, life=25, color=0x151412, opacity=.8){
+  const m = new THREE.Mesh(new THREE.CircleGeometry(size, 12),
+    new THREE.MeshBasicMaterial({map:TEX.scorch, transparent:true, opacity, depthWrite:false, color, polygonOffset:true, polygonOffsetFactor:-2}));
+  m.position.copy(p).addScaledVector(n, 0.015);
+  m.lookAt(p.clone().add(n));
+  scene.add(m);
+  decals.push({m, die:now()+life, mat:m.material, op:opacity});
+  if (decals.length > 50){ const o = decals.shift(); scene.remove(o.m); }
+}
+function decalsTick(){
+  const t = now();
+  for (let i=decals.length-1;i>=0;i--){
+    const d = decals[i];
+    const left = d.die - t;
+    if (left <= 0){ scene.remove(d.m); decals.splice(i,1); }
+    else if (left < 2) d.mat.opacity = d.op * left/2;
+  }
+}
+
 /* ---------- 動態特效（大招 / 波動 / 藤蔓 / 岩刺） ---------- */
 const specials = [];
 function addSpecial(life, update, cleanup){
@@ -1636,6 +1783,8 @@ function bladeOrbit(idx, dur=6){ // 金大招：環體飛劍（純視覺，傷�
 
 /* ---------- 爆炸 / 蒸汽 ---------- */
 function explosionFX(x, y, z, scale=1){
+  addDecal(new THREE.Vector3(x, .02, z), new THREE.Vector3(0,1,0), 1.7*scale, 18, 0x0d0c0a, .85); // 地面燒痕
+  waveRing(x, z, 0xffc890, 9*scale, .5, 1.2);                                                     // 衝擊波
   sparkBurst(new THREE.Vector3(x,y+.4,z), 0xffd080, 14, 6*scale);
   spawnSmoke(x, y+.3, z, {flame:true, n:8, size:2.4*scale, rise:2, life:.5, grow:2.5, opacity:.95, spread:.7*scale});
   spawnSmoke(x, y+.8, z, {n:10, size:2.6*scale, color:0x555a5e, rise:2.2, life:2.6, grow:1.6, opacity:.6, spread:1.1*scale});
@@ -1784,6 +1933,8 @@ function zoneVisTick(){
       }
       if (Math.random()<.15) spawnSmoke(v.x+rand(-v.r*.5,v.r*.5), 1.1, v.z+rand(-v.r*.5,v.r*.5),
         {n:1, size:1.1, color:0x494c50, rise:1.4, life:1.8, grow:.9, opacity:.4});
+      if (Math.random()<.25) spawnSmoke(v.x+rand(-v.r*.6,v.r*.6), .4, v.z+rand(-v.r*.6,v.r*.6),   // 火星飄升
+        {n:1, size:.12, color:0xffb060, add:true, rise:2.2, life:.9, grow:-.08, opacity:.95, spread:.05});
     }
     if (v.kind==='shrapnel' && Math.random()<.08)
       sparkBurst(new THREE.Vector3(v.x+rand(-v.r,v.r), .3, v.z+rand(-v.r,v.r)), 0xffe9a0, 2, 1.5);
@@ -1866,7 +2017,7 @@ function botThink(s, dt){
     const g = GUNS[s.gun];
     const ideal = g.pellets>1 ? 9 : g.zoom ? 30 : 16;
     const fwd = new THREE.Vector3(-Math.sin(s.ry),0,-Math.cos(s.ry));
-    const rgt = new THREE.Vector3(fwd.z,0,-fwd.x);
+    const rgt = new THREE.Vector3(-fwd.z,0,fwd.x);
     mv.addScaledVector(fwd, clamp((td-ideal)*0.25, -1, 1));
     mv.addScaledVector(rgt, Math.sin(b.strafe*1.7));
     // 開槍
@@ -2418,11 +2569,14 @@ function frame(){
   if (flashLight) flashLight.intensity *= 0.75;
   if (viewmodel) viewmodel.position.z += (0-viewmodel.position.z)*Math.min(1,dt*14);
 
-  // 物理 / 煙霧 / 動態特效 / 元素區域
+  // 物理 / 煙霧 / 彈丸 / 貼花 / 動態特效 / 元素區域
   physTick(dt);
   smokeTick(dt);
+  boltsTick(dt);
+  decalsTick();
   specialsTick(dt);
   zoneVisTick();
+  if (muzzleSprite && muzzleSprite.visible && now()-muzzleT > 0.05) muzzleSprite.visible = false;
 
   // 鏡頭震動
   if (camShake > 0.001){
