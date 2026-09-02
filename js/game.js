@@ -1037,8 +1037,8 @@ function tryFire(){
       }
     }
     const muzzle = camera.localToWorld(new THREE.Vector3(0.18, -0.16, -0.7));
-    spawnBolt(muzzle, end, myEl);              // 可見元素彈丸
-    tracer(muzzle, end, elColor);
+    spawnBolt(muzzle, end, myEl);              // 射出元素本身
+    if (myEl==='metal') tracer(muzzle, end, elColor);   // 只有飛刃保留掠光
     // 廣播開火（讓別人看到曳光）
     netFire(origin, end);
   }
@@ -1114,7 +1114,7 @@ function remoteTracer(o, e, idx){
   const el = s ? CHARS[s.char].el : 'metal';
   const from = new THREE.Vector3(o[0],o[1],o[2]), to = new THREE.Vector3(e[0],e[1],e[2]);
   spawnBolt(from, to, el);
-  tracer(from, to, EL[el].color);
+  if (el==='metal') tracer(from, to, EL[el].color);
   sparkBurst(from, 0xffd9a0, 3, 1.2);   // 遠端槍口火光
   const d = camera.position.distanceTo(from);
   if (d < 60) sfx('shot', clamp(1-d/60, .05, .6));
@@ -1683,39 +1683,65 @@ function sparkBurst(p, color, n=8, spd=3){
   }
 }
 
-/* ---------- 元素彈丸（可見的飛行子彈＋屬性尾跡） ---------- */
+/* ---------- 元素投射物：射出元素本身（火球/種子/水彈/飛刃/岩石） ---------- */
 const bolts = [];
 const MAX_BOLTS = 60;
-const BOLT_CFG = {
-  metal:{ core:0xfffbe8, glow:0xe8c84a, size:.10, speed:190 },
-  wood: { core:0xeaffec, glow:0x4ade80, size:.11, speed:150 },
-  water:{ core:0xf2ffff, glow:0x45c8ff, size:.12, speed:150 },
-  fire: { core:0xfff1c8, glow:0xff8040, size:.15, speed:140 },
-  earth:{ core:0xfff3dc, glow:0xd8a45c, size:.12, speed:150 },
-};
+const BOLT_SPEED = { metal:200, wood:140, water:150, fire:115, earth:135 };
 function spawnBolt(from, to, el){
-  const cfg = BOLT_CFG[el] || BOLT_CFG.metal;
   if (bolts.length >= MAX_BOLTS){ const old = bolts.shift(); scene.remove(old.group); }
   const group = new THREE.Group();
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color:cfg.glow,
-    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
-  glow.scale.set(cfg.size*4.2, cfg.size*4.2, 1);
-  const core = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color:cfg.core,
-    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
-  core.scale.set(cfg.size*1.6, cfg.size*1.6, 1);
-  group.add(glow, core);
+  let spinObj = null;
+  const spin = new THREE.Vector3();
+  const addGlow = (color, s)=>{
+    const g = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color,
+      transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+    g.scale.set(s, s, 1); group.add(g);
+  };
+  if (el==='metal'){         // 飛刃：旋轉的金屬刀刃
+    const m = new THREE.Mesh(new THREE.BoxGeometry(.028,.11,.38),
+      new THREE.MeshStandardMaterial({color:0xdfe4ea, emissive:0xe8c84a, emissiveIntensity:.55, metalness:.85, roughness:.2}));
+    group.add(m); spinObj = m; spin.set(0,0,30);
+    addGlow(0xffe9a0, .26);
+  } else if (el==='wood'){   // 種子：褐殼綠芒、翻滾飛行
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.09,8,6),
+      new THREE.MeshStandardMaterial({color:0x7a5530, emissive:0x2f9e57, emissiveIntensity:.4, roughness:.7}));
+    m.scale.set(1,.72,1.55);
+    group.add(m); spinObj = m; spin.set(10,0,14);
+    addGlow(0x7dfa9e, .24);
+  } else if (el==='water'){  // 水彈：拉長的水滴
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.095,10,8),
+      new THREE.MeshStandardMaterial({color:0xa8dcff, emissive:0x38bdf8, emissiveIntensity:.7,
+        transparent:true, opacity:.85, roughness:.1}));
+    m.scale.set(1,1,2.2);
+    group.add(m); spinObj = m; spin.set(0,0,7);
+    addGlow(0x9fe4ff, .3);
+  } else if (el==='fire'){   // 火球：焰核＋拖尾焰
+    const mk = s=>{ const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.flame,
+      transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+      sp.scale.set(s,s,1); return sp; };
+    const head = mk(.55), tail = mk(.38), tail2 = mk(.26);
+    tail.position.z = -.28; tail2.position.z = -.5;
+    group.add(head, tail, tail2);
+    group.userData.flames = [head, tail, tail2];
+  } else {                    // 岩彈：翻滾的碎岩
+    const m = new THREE.Mesh(new THREE.DodecahedronGeometry(.115),
+      new THREE.MeshStandardMaterial({map:TEX.rock, roughness:.95}));
+    group.add(m); spinObj = m; spin.set(15,11,9);
+  }
   group.position.copy(from);
+  group.lookAt(to);
   scene.add(group);
   const dir = to.clone().sub(from);
   const dist = dir.length();
   dir.normalize();
-  bolts.push({group, dir, el, speed:cfg.speed, left:dist, trailT:0});
+  bolts.push({group, dir, el, speed:BOLT_SPEED[el]||150, left:dist, trailT:0, spinObj, spin});
 }
 function boltTrail(b){
   const p = b.group.position;
   if (smokes.length >= MAX_SMOKE) return;
   if (b.el==='fire'){
-    spawnSmoke(p.x, p.y, p.z, {flame:true, n:1, size:.34, rise:.3, life:.22, grow:-.6, opacity:.9, spread:.02});
+    spawnSmoke(p.x, p.y, p.z, {flame:true, n:1, size:.42, rise:.4, life:.26, grow:-.7, opacity:.95, spread:.04});
+    if (Math.random()<.3) spawnSmoke(p.x, p.y, p.z, {n:1, size:.3, color:0x4a4d52, rise:.6, life:.8, grow:.6, opacity:.4, spread:.05});
   } else if (b.el==='water'){
     spawnSmoke(p.x, p.y, p.z, {n:1, size:.3, color:0x9adcff, add:true, rise:-.2, life:.3, grow:.3, opacity:.4, spread:.03});
   } else if (b.el==='metal'){
@@ -1727,11 +1753,22 @@ function boltTrail(b){
   }
 }
 function boltsTick(dt){
+  const t = now();
   for (let i=bolts.length-1;i>=0;i--){
     const b = bolts[i];
     const step = Math.min(b.speed*dt, b.left);
     b.group.position.addScaledVector(b.dir, step);
     b.left -= step;
+    if (b.spinObj){
+      b.spinObj.rotation.x += b.spin.x*dt;
+      b.spinObj.rotation.y += b.spin.y*dt;
+      b.spinObj.rotation.z += b.spin.z*dt;
+    }
+    const fl = b.group.userData.flames;
+    if (fl){ // 火球焰片閃動
+      fl[0].scale.setScalar(.5 + Math.sin(t*30+i)*.09);
+      fl[1].scale.setScalar(.36 + Math.cos(t*26+i)*.07);
+    }
     b.trailT -= dt;
     if (b.trailT <= 0){ b.trailT = 0.016; boltTrail(b); }
     if (b.left <= 0.01){ scene.remove(b.group); bolts.splice(i,1); }
