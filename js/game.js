@@ -12,16 +12,18 @@ const TICK_STATE = 1 / 15;          // 快照頻率
 const TICK_INPUT = 1 / 20;          // 輸入上傳頻率
 
 const EL = {
-  metal:{ glyph:'金', name:'金行', color:0xe8c84a, css:'#e8c84a', fx:'穿甲必爆‧彈落碎刃區', beats:'wood'  },
-  wood: { glyph:'木', name:'木行', color:0x4ade80, css:'#4ade80', fx:'命中吸血‧彈落荊棘叢', beats:'earth' },
-  water:{ glyph:'水', name:'水行', color:0x38bdf8, css:'#38bdf8', fx:'命中緩速‧彈落霜凍地', beats:'fire'  },
-  fire: { glyph:'火', name:'火行', color:0xff6b5e, css:'#ff6b5e', fx:'命中灼燒‧彈落生火海', beats:'metal' },
-  earth:{ glyph:'土', name:'土行', color:0xc99a4e, css:'#c99a4e', fx:'命中震懾‧彈落隆岩牆', beats:'water' },
+  metal:  { glyph:'金', name:'金行', color:0xe8c84a, css:'#e8c84a', fx:'穿甲必爆‧彈落碎刃區', beats:['wood'] },
+  wood:   { glyph:'木', name:'木行', color:0x4ade80, css:'#4ade80', fx:'命中吸血‧彈落荊棘叢', beats:['earth'] },
+  water:  { glyph:'水', name:'水行', color:0x38bdf8, css:'#38bdf8', fx:'命中緩速‧彈落霜凍地', beats:['fire'] },
+  fire:   { glyph:'火', name:'火行', color:0xff6b5e, css:'#ff6b5e', fx:'命中灼燒‧彈落生火海', beats:['metal','ice'] },
+  earth:  { glyph:'土', name:'土行', color:0xc99a4e, css:'#c99a4e', fx:'命中震懾‧彈落隆岩牆', beats:['water','thunder'] },
+  ice:    { glyph:'冰', name:'冰行', color:0xbfeaff, css:'#bfeaff', fx:'命中疊凍‧彈落冰封地', beats:['wood'] },
+  thunder:{ glyph:'雷', name:'雷行', color:0xc084fc, css:'#c084fc', fx:'連鎖閃電‧彈落雷場',   beats:['water'] },
 };
 function elemMult(a, d){
   if (!a || !d) return 1;
-  if (EL[a].beats === d) return 1.7;
-  if (EL[d].beats === a) return 0.6;
+  if (EL[a].beats.includes(d)) return 1.7;
+  if (EL[d].beats.includes(a)) return 0.6;
   return 1;
 }
 const CHARS = [
@@ -30,6 +32,8 @@ const CHARS = [
   { el:'water', name:'寒淵‧洗川', skill:'凝冰領域', skillCd:12, ultName:'水行奧義・滄海萬川歸一', ultSub:'ALL RIVERS RETURN TO SEA' },
   { el:'fire',  name:'炎獄‧焚天', skill:'焰行者',   skillCd:8,  ultName:'火行奧義・焚天滅地鳳凰劫', ultSub:'PHOENIX CALAMITY' },
   { el:'earth', name:'磐嶽‧不動', skill:'大地壁壘', skillCd:8,  ultName:'土行奧義・山崩地裂鎮乾坤', ultSub:'MOUNTAIN CRUSHES HEAVEN' },
+  { el:'ice',   name:'霜牙‧凜冬', skill:'急凍領域', skillCd:11, ultName:'冰行奧義・千里冰封永凍劫', ultSub:'ABSOLUTE ZERO' },
+  { el:'thunder',name:'紫電‧驚雷', skill:'落雷術',  skillCd:9,  ultName:'雷行奧義・九天玄雷滅世',   ultSub:'HEAVENLY THUNDER' },
 ];
 const GUNS = [
   { name:'靈息手槍',   en:'P-DAO 9mm',  dmg:30,  hs:2.0, mag:15, reload:1.6, rpm:420, spread:0.010, auto:false, pellets:1, range:70 },
@@ -86,6 +90,16 @@ function sfx(kind, vol=1){
     const o = ac.createOscillator(); o.type='triangle'; o.frequency.setValueAtTime(300,t);
     o.connect(g); g.gain.setValueAtTime(0.12*vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.1);
     o.start(t); o.stop(t+0.11);
+  } else if (kind==='zap'){
+    const len = 0.22;
+    const buf = ac.createBuffer(1, ac.sampleRate*len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/d.length, 3.5);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type='highpass'; f.frequency.value=1800;
+    src.connect(f); f.connect(g);
+    g.gain.setValueAtTime(0.55*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+len);
+    src.start(t);
   } else if (kind==='steam'){
     const len = 0.9;
     const buf = ac.createBuffer(1, ac.sampleRate*len, ac.sampleRate);
@@ -107,7 +121,7 @@ function mkSlot(i){
     hp:100, alive:true, respawnAt:0,
     pos:new THREE.Vector3(), ry:0, rx:0, moving:false, gun:2,
     kills:0, deaths:0, score:0, streak:0, ult:0,
-    fx:{burn:0,burnSrc:-1,slow:0,root:0,stun:0,shield:0,regen:0,haste:0,gat:0},
+    fx:{burn:0,burnSrc:-1,slow:0,root:0,stun:0,shield:0,regen:0,haste:0,gat:0,frz:0,frzT:0},
     skillCd:0,
     bot:null, avatar:null,
   };
@@ -157,7 +171,7 @@ function fillBots(){
   let bn = 0;
   for (const s of slots) if (s.ctrl==='empty'){
     s.ctrl='bot'; s.name=BOT_NAMES[bn++ % BOT_NAMES.length];
-    s.char = Math.floor(Math.random()*5);
+    s.char = Math.floor(Math.random()*CHARS.length);
     s.gun = [1,2,2,3,4][Math.floor(Math.random()*5)];
   }
 }
@@ -208,12 +222,12 @@ function hostOnData(conn, d){
     const team = cnt('red') <= cnt('blue') ? 'red' : 'blue';
     let slot = slots.find(s=> s.ctrl==='empty' && s.team===team) || slots.find(s=> s.ctrl==='empty');
     if (!slot){ send(conn, {t:'full'}); return; }
-    slot.ctrl='net'; slot.peer=conn.peer; slot.name=String(d.name||'玩家').slice(0,10); slot.char=clamp(d.c|0,0,4);
+    slot.ctrl='net'; slot.peer=conn.peer; slot.name=String(d.name||'玩家').slice(0,10); slot.char=clamp(d.c|0,0,CHARS.length-1);
     conns.push(conn); conn._idx = slot.idx;
     send(conn, {t:'you', idx:slot.idx});
     roomBroadcast();
   }
-  else if (d.t==='char'){ const s=slots[conn._idx]; if(s&&!started){ s.char=clamp(d.c|0,0,4); roomBroadcast(); } }
+  else if (d.t==='char'){ const s=slots[conn._idx]; if(s&&!started){ s.char=clamp(d.c|0,0,CHARS.length-1); roomBroadcast(); } }
   else if (d.t==='swap'){ if(!started) trySwap(conn._idx); }
   else if (d.t==='in'){ const s=slots[conn._idx]; if(s&&s.ctrl==='net'){
       s.pos.set(d.p[0],d.p[1],d.p[2]); s.ry=d.ry; s.rx=d.rx; s.moving=!!d.mv; s.gun=clamp(d.g|0,0,4); } }
@@ -1136,6 +1150,13 @@ function impactElem(point, dir, el, isRock){
     spawnDebris(point.x, point.y, point.z, 0x6fc8f0, 2, {min:.03,max:.07,spd:2.5,bounce:.15});
   } else if (el==='wood'){
     sparkBurst(point, 0x7dfa9e, 8, 3);
+  } else if (el==='ice'){
+    sparkBurst(point, 0xdff4ff, 10, 3.5);
+    spawnDebris(point.x, point.y, point.z, 0xbfeaff, 3, {min:.03, max:.07, spd:3, bounce:.2});
+  } else if (el==='thunder'){
+    sparkBurst(point, 0xd8b4ff, 12, 5);
+    const o = point.clone().add(new THREE.Vector3(rand(-1,1), rand(.2,1), rand(-1,1)));
+    arcLine(point.clone(), o, .3, 0xd8b4ff);
   } else {
     sparkBurst(point, 0xd8c090, 6, 3);
     spawnSmoke(point.x, point.y, point.z, {n:2, size:.6, color:0xa08b62, rise:.6, life:.9, grow:.7, opacity:.5, spread:.15});
@@ -1366,6 +1387,36 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
   }
   if (aEl==='wood'){ hostHeal(att, dmg*0.15); }             // 木：吸血
   if (aEl==='earth' && Math.random()<0.15){ vic.fx.stun = Math.max(vic.fx.stun, 0.5); } // 土：震懾
+  if (aEl==='ice'){                                          // 冰：疊凍，三層冰封
+    if (vic.fx.burn > 0){ vic.fx.burn = 0; dmg += 10; }      // 冰滅火
+    vic.fx.frz++; vic.fx.frzT = 4;
+    if (vic.fx.frz >= 3){
+      vic.fx.frz = 0; vic.fx.stun = Math.max(vic.fx.stun, 1.2); vic.fx.slow = Math.max(vic.fx.slow, 2.5);
+      const vp = vic.idx===myIdx ? me.pos : vic.pos;
+      const ev = {t:'ev', k:'frzfx', x:+vp.x.toFixed(1), y:+(vp.y+1).toFixed(1), z:+vp.z.toFixed(1)};
+      bcast(ev); onGameEvent(ev);
+    }
+  }
+  if (aEl==='fire' && vic.fx.frz > 0){ vic.fx.frz = 0; dmg += 15;  // 火融冰 → 蒸汽
+    const vp = vic.idx===myIdx ? me.pos : vic.pos; hostSteam(vp.x, vp.z); }
+  if (aEl==='thunder'){                                      // 雷：連鎖閃電
+    const vp = vic.idx===myIdx ? me.pos : vic.pos;
+    const wet = vic.fx.slow > 0;                              // 潮濕/受寒 → 超導
+    const chainP = wet ? 0.6 : 0.15;
+    if (Math.random() < 0.08) vic.fx.stun = Math.max(vic.fx.stun, 0.35);  // 麻痺
+    if (Math.random() < chainP){
+      for (const o of slots){
+        if (o.ctrl==='empty' || !o.alive || o.team===att.team || o===vic) continue;
+        const op = o.idx===myIdx ? me.pos : o.pos;
+        if ((op.x-vp.x)**2 + (op.z-vp.z)**2 < (wet?100:64)){
+          hostDamage(o, (wet?24:dmg*0.5)*elemMult('thunder', CHARS[o.char].el), att, false, wet?'超導':'連鎖閃電');
+          const ev = {t:'ev', k:'chain', a:[+vp.x.toFixed(1),1.3,+vp.z.toFixed(1)], b:[+op.x.toFixed(1),1.3,+op.z.toFixed(1)]};
+          bcast(ev); onGameEvent(ev);
+          if (!wet) break;                                    // 一般僅跳 1 個，超導全跳
+        }
+      }
+    }
+  }
   hostDamage(vic, dmg, att, part==='head', g.name);
   addUlt(att, dmg*0.14);
 }
@@ -1420,6 +1471,8 @@ function hostGroundHit(idx, x, y, z){
   else if (el==='water'){ hostAddZone('frost', x, z, 2.0, 4.5, idx); }
   else if (el==='wood'){ hostAddZone('bramble', x, z, 1.9, 6, idx); }
   else if (el==='metal'){ hostAddZone('shrapnel', x, z, 1.7, 5, idx); }
+  else if (el==='ice'){ hostAddZone('ice', x, z, 2.0, 5, idx); }
+  else if (el==='thunder'){ hostAddZone('shock', x, z, 1.8, 4.5, idx); }
   else if (el==='earth'){
     if (y > 1.6) return;                       // 打太高不隆起
     for (const o of slots){                    // 避免把人直接卡進石頭
@@ -1522,6 +1575,30 @@ function hostUseSkill(idx, d){
       hostAddZone('fire', fx2, fz2, 1.6, 3.2, idx);
     }
   }
+  else if (el==='ice'){
+    // 急凍領域：周圍敵人重緩速+疊兩層凍，腳下留冰封地
+    for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team!==s.team){
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      if ((op.x-d.p[0])**2 + (op.z-d.p[2])**2 < 100){
+        o.fx.slow = 4; o.fx.frz = Math.min(o.fx.frz+2, 2); o.fx.frzT = 4;
+      }
+    }
+    hostAddZone('ice', d.p[0], d.p[2], 6, 6, idx);
+  }
+  else if (el==='thunder'){
+    // 落雷術：瞄準方向 12m 處天降落雷
+    const f = new THREE.Vector3(d.dir[0],0,d.dir[2]).normalize();
+    const lx = clamp(d.p[0]+f.x*12, -56, 56), lz = clamp(d.p[2]+f.z*12, -56, 56);
+    ev.lx = +lx.toFixed(1); ev.lz = +lz.toFixed(1);
+    for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team!==s.team){
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      if ((op.x-lx)**2 + (op.z-lz)**2 < 20){
+        hostDamage(o, 45*elemMult('thunder', CHARS[o.char].el), s, false, '落雷');
+        o.fx.stun = Math.max(o.fx.stun, 0.8);
+      }
+    }
+    hostAddZone('shock', lx, lz, 2.5, 3, idx);
+  }
   bcast(ev); onGameEvent(ev);
 }
 function localUlt(){
@@ -1559,6 +1636,30 @@ function hostUseUlt(idx){
     }
     ev.wid = ++wallSeq; // 環形岩陣（以 wid 起算 8 座）
     wallSeq += 7;
+  } else if (el==='ice'){
+    // 千里冰封：全場敵人冰封 3 秒
+    for (const o of foes){
+      hostDamage(o, 55*elemMult('ice',CHARS[o.char].el), s, false, '永凍');
+      o.fx.stun = Math.max(o.fx.stun, 3); o.fx.slow = 5; o.fx.frz = 0;
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      hostAddZone('ice', op.x, op.z, 2.5, 6, idx);
+    }
+  } else if (el==='thunder'){
+    // 九天玄雷：三波天雷轟擊所有敵人
+    const strike = ()=>{
+      if (!started) return;
+      const evb = {t:'ev', k:'boltset', pts:[]};
+      for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team!==s.team){
+        const op = o.idx===myIdx ? me.pos : o.pos;
+        evb.pts.push([+op.x.toFixed(1), +op.z.toFixed(1)]);
+        hostDamage(o, 55*elemMult('thunder',CHARS[o.char].el), s, false, '九天玄雷');
+        o.fx.stun = Math.max(o.fx.stun, 0.9);
+      }
+      if (evb.pts.length){ bcast(evb); onGameEvent(evb); }
+    };
+    strike();
+    setTimeout(strike, 800);
+    setTimeout(strike, 1600);
   }
   bcast(ev); onGameEvent(ev);
 }
@@ -1601,6 +1702,11 @@ function onGameEvent(d){
     }
     if (d.el==='wood') spikeBurst(d.p[0], d.p[2], 0x2f9e57, 9, 1.5, 10, 1.7);  // 藤蔓破土
     if (d.el==='metal') sparkBurst(new THREE.Vector3(d.p[0], 1.3, d.p[2]), 0xffe9a0, 16, 4);
+    if (d.el==='ice'){
+      ringFX(new THREE.Vector3(d.p[0], .15, d.p[2]), 0xbfeaff, 10);
+      spikeBurst(d.p[0], d.p[2], 0xd8f2ff, 10, 1.5, 9, 1.4);   // 冰晶隆起
+    }
+    if (d.el==='thunder' && d.lx !== undefined) lightningFX(d.lx, d.lz);   // 落雷
     if (d.el==='fire'){ /* 衝刺者本地處理 */ }
   }
   else if (d.k==='ult'){
@@ -1634,11 +1740,20 @@ function onGameEvent(d){
       for (const [x,z] of d.targets) setTimeout(()=> meteorFX(x,z), rand(400,900));
     }
     if (c.el==='metal'){ bladeOrbit(d.i, 6); }               // 環體飛劍演出
+    if (c.el==='ice'){
+      waveRing(d.p[0], d.p[2], 0xbfeaff, 50, 2, 3.5);
+      spikeBurst(d.p[0], d.p[2], 0xd8f2ff, 24, 4, 26, 2.8);  // 全場冰晶
+      spawnSmoke(d.p[0], .6, d.p[2], {n:16, size:2.6, color:0xe8f6ff, rise:1.2, life:2.4, grow:1.5, opacity:.6, spread:8});
+    }
+    if (c.el==='thunder'){ shakeCam(.4); sfx('zap'); }        // 天雷由 boltset 事件呈現
   }
   else if (d.k==='wallgone'){ removeWall(d.id); }
   else if (d.k==='mwall'){ spawnMiniWall(d.wid, d.x, d.z, d.ry); }
   else if (d.k==='aitake'){ const s=slots[d.i]; if(s){ s.ctrl='bot'; s.bot=null; } }
   else if (d.k==='zone'){ spawnZoneVis(d.id, d.kind, d.x, d.z, d.r, d.dur); }
+  else if (d.k==='frzfx'){ iceShatterFX(d.x, d.y, d.z); }
+  else if (d.k==='chain'){ arcLine(new THREE.Vector3(...d.a), new THREE.Vector3(...d.b), .6); sfx('zap', .4); }
+  else if (d.k==='boltset'){ for (const [x,z] of d.pts) setTimeout(()=> lightningFX(x, z), rand(0,250)); }
   else if (d.k==='zoneend'){ const v=zoneVis.get(d.id); if(v){ v.until = 0; } }
   else if (d.k==='steam'){ steamFX(d.x, d.z); }
   else if (d.k==='boomfx'){ explosionFX(d.x, d.y, d.z, .7); }
@@ -1833,7 +1948,7 @@ function sparkBurst(p, color, n=8, spd=3){
 /* ---------- 元素投射物：射出元素本身（火球/種子/水彈/飛刃/岩石） ---------- */
 const bolts = [];
 const MAX_BOLTS = 60;
-const BOLT_SPEED = { metal:200, wood:140, water:150, fire:115, earth:135 };
+const BOLT_SPEED = { metal:200, wood:140, water:150, fire:115, earth:135, ice:160, thunder:230 };
 function spawnBolt(from, to, el){
   if (bolts.length >= MAX_BOLTS){ const old = bolts.shift(); scene.remove(old.group); }
   const group = new THREE.Group();
@@ -1870,6 +1985,19 @@ function spawnBolt(from, to, el){
     tail.position.z = -.28; tail2.position.z = -.5;
     group.add(head, tail, tail2);
     group.userData.flames = [head, tail, tail2];
+  } else if (el==='ice'){    // 冰晶錐：半透明冰稜自旋
+    const m = new THREE.Mesh(new THREE.OctahedronGeometry(.12),
+      new THREE.MeshStandardMaterial({color:0xdff4ff, emissive:0x9fd8f0, emissiveIntensity:.55,
+        transparent:true, opacity:.88, roughness:.1, metalness:.1}));
+    m.scale.set(.7,.7,1.7);
+    group.add(m); spinObj = m; spin.set(0,0,12);
+    addGlow(0xbfeaff, .28);
+  } else if (el==='thunder'){ // 電光彈：紫電核心高速竄行
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.07,8,6),
+      new THREE.MeshStandardMaterial({color:0xf2e8ff, emissive:0xc084fc, emissiveIntensity:1.4}));
+    group.add(m);
+    addGlow(0xd8b4ff, .4);
+    addGlow(0xffffff, .16);
   } else {                    // 岩彈：翻滾的碎岩
     const m = new THREE.Mesh(new THREE.DodecahedronGeometry(.115),
       new THREE.MeshStandardMaterial({map:TEX.rock, roughness:.95}));
@@ -1893,6 +2021,14 @@ function boltTrail(b){
     spawnSmoke(p.x, p.y, p.z, {n:1, size:.3, color:0x9adcff, add:true, rise:-.2, life:.3, grow:.3, opacity:.4, spread:.03});
   } else if (b.el==='metal'){
     spawnSmoke(p.x, p.y, p.z, {n:1, size:.16, color:0xffe9a0, add:true, rise:0, life:.16, grow:-.4, opacity:.85, spread:.02});
+  } else if (b.el==='ice'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.26, color:0xe0f4ff, rise:-.15, life:.35, grow:.35, opacity:.5, spread:.04});
+  } else if (b.el==='thunder'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.18, color:0xd8b4ff, add:true, rise:0, life:.14, grow:-.5, opacity:.95, spread:.05});
+    if (Math.random()<.12){  // 竄電小弧
+      const o = p.clone().add(new THREE.Vector3(rand(-.4,.4), rand(-.4,.4), rand(-.4,.4)));
+      arcLine(p.clone(), o, .2, 0xd8b4ff);
+    }
   } else if (b.el==='wood'){
     spawnSmoke(p.x, p.y, p.z, {n:1, size:.2, color:0x7dfa9e, add:true, rise:.15, life:.28, grow:-.3, opacity:.6, spread:.05});
   } else {
@@ -2028,6 +2164,42 @@ function explosionFX(x, y, z, scale=1){
   sfx('boom', clamp(1.2 - d/50, .1, 1));
   shakeCam(clamp(.6 - d/40, 0, .6));
 }
+function arcLine(a, b, jag=0.5, color=0xd8b4ff){
+  // 鋸齒閃電弧線
+  const pts = [a.clone()];
+  const segs = 7;
+  for (let i=1;i<segs;i++){
+    const p = a.clone().lerp(b, i/segs);
+    p.x += rand(-jag,jag); p.y += rand(-jag,jag); p.z += rand(-jag,jag);
+    pts.push(p);
+  }
+  pts.push(b.clone());
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color, transparent:true, opacity:.95, blending:THREE.AdditiveBlending}));
+  scene.add(line);
+  fxList.push({obj:line, die:now()+0.14, mat:line.material});
+}
+function lightningFX(x, z){
+  // 天雷落地：主幹+白芯+落點爆閃
+  const top = new THREE.Vector3(x+rand(-3,3), 28, z+rand(-3,3));
+  const hit = new THREE.Vector3(x, 0, z);
+  arcLine(top, hit, 1.3, 0xc084fc);
+  arcLine(top, hit, 0.5, 0xffffff);
+  sparkBurst(new THREE.Vector3(x,.6,z), 0xd8b4ff, 14, 6);
+  spawnSmoke(x, .5, z, {add:true, n:4, size:1.6, color:0xc9a8ff, rise:1.6, life:.4, grow:1.5, opacity:.7, spread:.4});
+  const L = new THREE.PointLight(0xc084fc, 50, 16, 1.6);
+  L.position.set(x, 2, z); scene.add(L);
+  addSpecial(.25, (dt,k)=>{ L.intensity = 50*(1-k)*(Math.random()<.5?1:.4); }, ()=> scene.remove(L));
+  const d = camera ? camera.position.distanceTo(hit) : 99;
+  sfx('zap', clamp(1.1-d/50, .1, 1));
+  shakeCam(clamp(.35-d/60, 0, .35));
+}
+function iceShatterFX(x, y, z){
+  sparkBurst(new THREE.Vector3(x,y,z), 0xdff4ff, 16, 5);
+  spawnDebris(x, y, z, 0xbfeaff, 6, {min:.04, max:.1, spd:5, bounce:.2});
+  spawnSmoke(x, y, z, {n:4, size:1, color:0xe8f6ff, rise:.6, life:1, grow:.8, opacity:.55, spread:.4});
+  sfx('hit', .8);
+}
 function steamFX(x, z){
   spawnSmoke(x, .5, z, {n:16, size:2.8, color:0xe8eef2, rise:1.8, life:3.6, grow:1.4, opacity:.7, spread:1.4});
   sfx('steam', .8);
@@ -2044,8 +2216,14 @@ function hostAddZone(kind, x, z, r, dur, src){
     for (const [id,zn] of hzones){
       const d2 = (zn.x-x)**2 + (zn.z-z)**2;
       if (d2 >= (zn.r+r)**2) continue;
-      if (zn.kind==='frost'){ hostSteam((x+zn.x)/2, (z+zn.z)/2); return; }  // 水剋火：火被澆熄成蒸汽
+      if (zn.kind==='frost' || zn.kind==='ice'){ hostSteam((x+zn.x)/2, (z+zn.z)/2); return; }  // 水/冰滅火成蒸汽
       if (zn.kind==='bramble'){ hostEndZone(id); r += 1.1; dur += 1.5; }    // 木生火：荊棘引燃火勢更旺
+    }
+  }
+  if (kind==='ice'){
+    for (const [id,zn] of hzones) if (zn.kind==='fire'){
+      const d2 = (zn.x-x)**2 + (zn.z-z)**2;
+      if (d2 < (zn.r+r)**2){ hostEndZone(id); hostSteam(zn.x, zn.z); }      // 冰封撲滅火場
     }
   }
   if (kind==='bramble'){
@@ -2137,6 +2315,31 @@ function spawnZoneVis(id, kind, x, z, r, dur){
       c.castShadow = true;
       group.add(c);
     }
+  } else if (kind==='ice'){
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
+      new THREE.MeshStandardMaterial({color:0xcfeaf8, roughness:.15, metalness:.1, transparent:true, opacity:.75}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .05, z);
+    group.add(disc);
+    const im = new THREE.MeshStandardMaterial({color:0xe4f6ff, emissive:0x9fd8f0, emissiveIntensity:.4,
+      transparent:true, opacity:.85, roughness:.1});
+    for (let i=0;i<9;i++){
+      const a = Math.random()*Math.PI*2, rr = rand(r*.15, r*.85);
+      const c = new THREE.Mesh(new THREE.ConeGeometry(rand(.1,.24), rand(.5,1.3), 5), im);
+      c.position.set(x+Math.cos(a)*rr, .3, z+Math.sin(a)*rr);
+      c.rotation.set(rand(-.4,.4), 0, rand(-.4,.4));
+      c.castShadow = true;
+      group.add(c);
+    }
+  } else if (kind==='shock'){
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r*.8, r, 32),
+      new THREE.MeshBasicMaterial({color:0xc084fc, transparent:true, opacity:.55, side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending, depthWrite:false}));
+    ring.rotation.x = -Math.PI/2; ring.position.set(x, .06, z);
+    group.add(ring);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
+      new THREE.MeshBasicMaterial({color:0x8a5fd0, transparent:true, opacity:.18, depthWrite:false}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .04, z);
+    group.add(disc);
   } else if (kind==='shrapnel'){
     const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
       new THREE.MeshBasicMaterial({color:0x8a7a3a, transparent:true, opacity:.25, depthWrite:false}));
@@ -2170,6 +2373,10 @@ function zoneVisTick(){
     }
     if (v.kind==='shrapnel' && Math.random()<.08)
       sparkBurst(new THREE.Vector3(v.x+rand(-v.r,v.r), .3, v.z+rand(-v.r,v.r)), 0xffe9a0, 2, 1.5);
+    if (v.kind==='shock' && Math.random()<.12){
+      const a = new THREE.Vector3(v.x+rand(-v.r,v.r), .1, v.z+rand(-v.r,v.r));
+      arcLine(a, a.clone().add(new THREE.Vector3(rand(-1,1), rand(.4,1.4), rand(-1,1))), .3, 0xd8b4ff);
+    }
     if (v.kind==='bramble' && Math.random()<.04)
       sparkBurst(new THREE.Vector3(v.x+rand(-v.r,v.r), .5, v.z+rand(-v.r,v.r)), 0x7dfa9e, 2, 1);
   }
@@ -2332,6 +2539,7 @@ function hostTick(dt){
     // 狀態效果
     const fx = s.fx;
     for (const k of ['slow','root','stun','shield','regen','haste','gat']) if (fx[k]>0) fx[k]-=dt;
+    if (fx.frzT>0){ fx.frzT-=dt; if (fx.frzT<=0) fx.frz = 0; }   // 凍層衰減
     if (fx.burn>0){
       fx.burn-=dt;
       if (s.alive){ hostDamage(s, 6*dt, slots[fx.burnSrc], false, '灼燒'); }
@@ -2366,6 +2574,9 @@ function hostTick(dt){
       else if (zn.kind==='mud'){ o.fx.slow = Math.max(o.fx.slow, .5); }
       else if (zn.kind==='bramble'){ o.fx.slow = Math.max(o.fx.slow, .5); hostDamage(o, 5*dt, slots[zn.src], false, '荊棘'); }
       else if (zn.kind==='shrapnel'){ hostDamage(o, 8*dt, slots[zn.src], false, '碎刃'); }
+      else if (zn.kind==='ice'){ o.fx.slow = Math.max(o.fx.slow, .7); hostDamage(o, 3*dt, slots[zn.src], false, '冰封'); }
+      else if (zn.kind==='shock'){ hostDamage(o, 10*dt, slots[zn.src], false, '雷場');
+        if (Math.random() < dt*0.7) o.fx.stun = Math.max(o.fx.stun, 0.3); }
     }
   }
   // 蒸汽視線遮蔽到期
