@@ -12,11 +12,11 @@ const TICK_STATE = 1 / 15;          // 快照頻率
 const TICK_INPUT = 1 / 20;          // 輸入上傳頻率
 
 const EL = {
-  metal:{ glyph:'金', name:'金行', color:0xe8c84a, css:'#e8c84a', fx:'穿甲‧必爆', beats:'wood'  },
-  wood: { glyph:'木', name:'木行', color:0x4ade80, css:'#4ade80', fx:'吸血‧回復', beats:'earth' },
-  water:{ glyph:'水', name:'水行', color:0x38bdf8, css:'#38bdf8', fx:'緩速‧冰凍', beats:'fire'  },
-  fire: { glyph:'火', name:'火行', color:0xff6b5e, css:'#ff6b5e', fx:'灼燒‧延燒', beats:'metal' },
-  earth:{ glyph:'土', name:'土行', color:0xc99a4e, css:'#c99a4e', fx:'築牆‧震懾', beats:'water' },
+  metal:{ glyph:'金', name:'金行', color:0xe8c84a, css:'#e8c84a', fx:'穿甲必爆‧彈落碎刃區', beats:'wood'  },
+  wood: { glyph:'木', name:'木行', color:0x4ade80, css:'#4ade80', fx:'命中吸血‧彈落荊棘叢', beats:'earth' },
+  water:{ glyph:'水', name:'水行', color:0x38bdf8, css:'#38bdf8', fx:'命中緩速‧彈落霜凍地', beats:'fire'  },
+  fire: { glyph:'火', name:'火行', color:0xff6b5e, css:'#ff6b5e', fx:'命中灼燒‧彈落生火海', beats:'metal' },
+  earth:{ glyph:'土', name:'土行', color:0xc99a4e, css:'#c99a4e', fx:'命中震懾‧彈落隆岩牆', beats:'water' },
 };
 function elemMult(a, d){
   if (!a || !d) return 1;
@@ -216,6 +216,7 @@ function hostOnData(conn, d){
   else if (d.t==='hit'){ hostApplyHit(conn._idx, d.v|0, d.part, d.g|0, d.dist||10); }
   else if (d.t==='whit'){ hostWallHit(d.id, d.dmg||20); }
   else if (d.t==='bhit'){ hostBarrelHit(conn._idx, d.id|0, d.dmg||20); }
+  else if (d.t==='ghit'){ hostGroundHit(conn._idx, +d.x||0, +d.y||0, +d.z||0); }
   else if (d.t==='skill'){ hostUseSkill(conn._idx, d); }
   else if (d.t==='ult'){ hostUseUlt(conn._idx); }
 }
@@ -929,6 +930,7 @@ function tryFire(){
         spawnSmoke(h.point.x, h.point.y, h.point.z, {n:2, size:.5, color:0x883333, rise:.4, life:.6, grow:.5, opacity:.5, spread:.15});
       } else {
         impactElem(h.point, dir, myEl, false);
+        if (p===0) reportGroundHit(h.point);   // 子彈屬性改造場地（每發判定一次）
       }
     }
     tracer(origin.clone().addScaledVector(dir,0.6).add(new THREE.Vector3(0,-0.12,0)), end, elColor);
@@ -964,6 +966,10 @@ function impactElem(point, dir, el, isRock){
 function reportBarrelHit(id, dmg){
   if (isHost) hostBarrelHit(myIdx, id, dmg);
   else if (conns[0]) send(conns[0], {t:'bhit', id, dmg});
+}
+function reportGroundHit(pt){
+  if (isHost) hostGroundHit(myIdx, pt.x, pt.y, pt.z);
+  else if (conns[0]) send(conns[0], {t:'ghit', x:+pt.x.toFixed(1), y:+pt.y.toFixed(1), z:+pt.z.toFixed(1)});
 }
 function startReload(){
   if (me.reloading>0 || me.ammo===GUNS[me.gun].mag) return;
@@ -1124,6 +1130,38 @@ function hostBarrelHit(attIdx, id, dmg){
   const b = barrels.get(id); if(!b || b.dead) return;
   b.hp -= dmg;
   if (b.hp <= 0) hostExplodeBarrel(attIdx, id);
+}
+/* ---- 子彈落點改造場地（依屬性；觸發率隨槍威力） ---- */
+const miniWallQueue = [];   // 主機：土彈岩掩體的存量上限
+function hostGroundHit(idx, x, y, z){
+  const s = slots[idx]; if(!s || !s.alive) return;
+  const el = CHARS[s.char].el;
+  const g = GUNS[clamp(s.gun,0,4)];
+  const chance = 0.10 + g.dmg*0.005;   // 手槍25% 衝鋒18% 突擊24% 霰彈15% 狙擊62%
+  if (Math.random() > chance) return;
+  x = clamp(x, -56, 56); z = clamp(z, -56, 56);
+  if (el==='fire'){ hostAddZone('fire', x, z, 1.5, 3.5, idx); }
+  else if (el==='water'){ hostAddZone('frost', x, z, 2.0, 4.5, idx); }
+  else if (el==='wood'){ hostAddZone('bramble', x, z, 1.9, 6, idx); }
+  else if (el==='metal'){ hostAddZone('shrapnel', x, z, 1.7, 5, idx); }
+  else if (el==='earth'){
+    if (y > 1.6) return;                       // 打太高不隆起
+    for (const o of slots){                    // 避免把人直接卡進石頭
+      if (o.ctrl==='empty' || !o.alive) continue;
+      const p = o.idx===myIdx ? me.pos : o.pos;
+      if ((p.x-x)**2 + (p.z-z)**2 < 2.2) return;
+    }
+    const sp = idx===myIdx ? me.pos : s.pos;
+    const wid = ++wallSeq;
+    const ev = {t:'ev', k:'mwall', wid, x:+x.toFixed(1), z:+z.toFixed(1),
+                ry:+Math.atan2(x-sp.x, z-sp.z).toFixed(2)};
+    bcast(ev); onGameEvent(ev);
+    miniWallQueue.push(wid);
+    while (miniWallQueue.length > 8){          // 最多同時 8 座
+      const old = miniWallQueue.shift();
+      if (wallsLive.has(old)){ bcast({t:'ev', k:'wallgone', id:old}); removeWall(old); }
+    }
+  }
 }
 function hostExplodeBarrel(attIdx, id){
   const b = barrels.get(id); if(!b || b.dead) return;
@@ -1322,6 +1360,7 @@ function onGameEvent(d){
     if (c.el==='metal'){ bladeOrbit(d.i, 6); }               // 環體飛劍演出
   }
   else if (d.k==='wallgone'){ removeWall(d.id); }
+  else if (d.k==='mwall'){ spawnMiniWall(d.wid, d.x, d.z, d.ry); }
   else if (d.k==='aitake'){ const s=slots[d.i]; if(s){ s.ctrl='bot'; s.bot=null; } }
   else if (d.k==='zone'){ spawnZoneVis(d.id, d.kind, d.x, d.z, d.r, d.dur); }
   else if (d.k==='zoneend'){ const v=zoneVis.get(d.id); if(v){ v.until = 0; } }
@@ -1369,6 +1408,28 @@ function spawnEarthWall(id, x, z, ry){
   scene.add(group);
   wallsLive.set(id, {group, meshes, colliders:cols, hp:260, dieAt:now()+20});
   sfx('boom', .35); shakeCam(0.16);
+}
+function spawnMiniWall(id, x, z, ry){ // 土彈擊地隆起的單塊岩掩體
+  if (wallsLive.has(id)) return;
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({map:TEX.rock, roughness:.95});
+  const h = 1.6;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(1.8, h, 0.75), mat);
+  m.position.set(x, h/2, z); m.rotation.y = ry;
+  m.castShadow = m.receiveShadow = true;
+  m.userData = {wallId:id};
+  group.add(m);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(.5, .5, 5), mat);
+  cap.position.set(x+rand(-.4,.4), h+.15, z+rand(-.3,.3)); cap.rotation.z = rand(-.3,.3);
+  group.add(cap);
+  scene.add(group);
+  const c = {x0:x-1.0, x1:x+1.0, y0:0, y1:h, z0:z-1.0, z1:z+1.0};
+  colliders.push(c);
+  wallsLive.set(id, {group, meshes:[m], colliders:[c], hp:140, dieAt:now()+12});
+  spawnSmoke(x, .3, z, {n:6, size:1.2, color:0xa08b62, rise:1, life:1.2, grow:1, opacity:.6, spread:.8});
+  spawnDebris(x, .8, z, 0x8a6a3c, 4, {spd:4});
+  const d = camera ? camera.position.distanceTo(new THREE.Vector3(x,1,z)) : 99;
+  if (d < 40){ sfx('boom', clamp(.5-d/90,.05,.4)); shakeCam(clamp(.2-d/150,0,.2)); }
 }
 function removeWall(id){
   const w = wallsLive.get(id); if(!w) return;
@@ -1589,9 +1650,17 @@ let zoneSeq = 0;
 function hostAddZone(kind, x, z, r, dur, src){
   // 五行反應
   if (kind==='fire'){
-    for (const [id,zn] of hzones) if (zn.kind==='frost'){
+    for (const [id,zn] of hzones){
       const d2 = (zn.x-x)**2 + (zn.z-z)**2;
-      if (d2 < (zn.r+r)**2){ hostSteam((x+zn.x)/2, (z+zn.z)/2); return; }  // 水剋火：火被澆熄成蒸汽
+      if (d2 >= (zn.r+r)**2) continue;
+      if (zn.kind==='frost'){ hostSteam((x+zn.x)/2, (z+zn.z)/2); return; }  // 水剋火：火被澆熄成蒸汽
+      if (zn.kind==='bramble'){ hostEndZone(id); r += 1.1; dur += 1.5; }    // 木生火：荊棘引燃火勢更旺
+    }
+  }
+  if (kind==='bramble'){
+    for (const [id,zn] of hzones) if (zn.kind==='fire'){
+      const d2 = (zn.x-x)**2 + (zn.z-z)**2;
+      if (d2 < (zn.r+r)**2){ hostAddZoneRaw('fire', x, z, r, 4, src); return; } // 荊棘落入火場直接燒起來
     }
   }
   if (kind==='frost'){
@@ -1608,6 +1677,7 @@ function hostAddZone(kind, x, z, r, dur, src){
   hostAddZoneRaw(kind, x, z, r, dur, src);
 }
 function hostAddZoneRaw(kind, x, z, r, dur, src){
+  if (hzones.size >= 36) hostEndZone(hzones.keys().next().value);  // 區域總量上限
   const id = ++zoneSeq;
   hzones.set(id, {kind, x, z, r, until:now()+dur, src});
   const ev = {t:'ev', k:'zone', id, kind, x:+x.toFixed(1), z:+z.toFixed(1), r, dur};
@@ -1662,6 +1732,33 @@ function spawnZoneVis(id, kind, x, z, r, dur){
       new THREE.MeshStandardMaterial({color:0x4a3a24, roughness:1, transparent:true, opacity:.9}));
     disc.rotation.x = -Math.PI/2; disc.position.set(x, .05, z);
     group.add(disc);
+  } else if (kind==='bramble'){
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
+      new THREE.MeshStandardMaterial({color:0x1e3d26, roughness:1, transparent:true, opacity:.85}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .05, z);
+    group.add(disc);
+    const vm = new THREE.MeshStandardMaterial({color:0x2f9e57, roughness:.8});
+    for (let i=0;i<8;i++){
+      const a = Math.random()*Math.PI*2, rr = rand(r*.15, r*.85);
+      const c = new THREE.Mesh(new THREE.ConeGeometry(rand(.08,.18), rand(.5,1.1), 5), vm);
+      c.position.set(x+Math.cos(a)*rr, .3, z+Math.sin(a)*rr);
+      c.rotation.set(rand(-.5,.5), 0, rand(-.5,.5));
+      c.castShadow = true;
+      group.add(c);
+    }
+  } else if (kind==='shrapnel'){
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
+      new THREE.MeshBasicMaterial({color:0x8a7a3a, transparent:true, opacity:.25, depthWrite:false}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .04, z);
+    group.add(disc);
+    const sm = new THREE.MeshStandardMaterial({color:0xfff3c4, emissive:0xe8c84a, emissiveIntensity:.6, metalness:.4, roughness:.3});
+    for (let i=0;i<7;i++){
+      const a = Math.random()*Math.PI*2, rr = rand(r*.1, r*.85);
+      const c = new THREE.Mesh(new THREE.ConeGeometry(rand(.05,.1), rand(.4,.8), 4), sm);
+      c.position.set(x+Math.cos(a)*rr, .25, z+Math.sin(a)*rr);
+      c.rotation.set(rand(-.7,.7), rand(0,3), rand(-.7,.7));
+      group.add(c);
+    }
   }
   scene.add(group);
   zoneVis.set(id, {group, kind, until:now()+dur, flames, x, z, r});
@@ -1678,6 +1775,10 @@ function zoneVisTick(){
       if (Math.random()<.15) spawnSmoke(v.x+rand(-v.r*.5,v.r*.5), 1.1, v.z+rand(-v.r*.5,v.r*.5),
         {n:1, size:1.1, color:0x494c50, rise:1.4, life:1.8, grow:.9, opacity:.4});
     }
+    if (v.kind==='shrapnel' && Math.random()<.08)
+      sparkBurst(new THREE.Vector3(v.x+rand(-v.r,v.r), .3, v.z+rand(-v.r,v.r)), 0xffe9a0, 2, 1.5);
+    if (v.kind==='bramble' && Math.random()<.04)
+      sparkBurst(new THREE.Vector3(v.x+rand(-v.r,v.r), .5, v.z+rand(-v.r,v.r)), 0x7dfa9e, 2, 1);
   }
 }
 
@@ -1816,6 +1917,7 @@ function botShoot(s, target, dist, g){
   const ev = {t:'fire', i:s.idx, o:[+o[0].toFixed(1),+o[1].toFixed(1),+o[2].toFixed(1)],
               e:[+aim.x.toFixed(1),+aim.y.toFixed(1),+aim.z.toFixed(1)]};
   bcast(ev); remoteTracer(ev.o, ev.e, s.idx);
+  if (Math.random()<0.10) hostGroundHit(s.idx, aim.x+rand(-2,2), 0.3, aim.z+rand(-2,2)); // AI 也會改造場地
   for (let p=0;p<g.pellets;p++){
     if (Math.random() < hitP){
       const part = Math.random()<0.12 ? 'head':'body';
@@ -1881,6 +1983,8 @@ function hostTick(dt){
       if (zn.kind==='fire'){ o.fx.burn = Math.max(o.fx.burn, .8); o.fx.burnSrc = zn.src; }
       else if (zn.kind==='frost'){ o.fx.slow = Math.max(o.fx.slow, .5); }
       else if (zn.kind==='mud'){ o.fx.slow = Math.max(o.fx.slow, .5); }
+      else if (zn.kind==='bramble'){ o.fx.slow = Math.max(o.fx.slow, .5); hostDamage(o, 5*dt, slots[zn.src], false, '荊棘'); }
+      else if (zn.kind==='shrapnel'){ hostDamage(o, 8*dt, slots[zn.src], false, '碎刃'); }
     }
   }
   // 蒸汽視線遮蔽到期
