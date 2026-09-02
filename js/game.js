@@ -25,7 +25,7 @@ function elemMult(a, d){
   return 1;
 }
 const CHARS = [
-  { el:'metal', name:'白鋒‧斬鐵', skill:'金鐘罩',   skillCd:12, ultName:'金行奧義・萬刃歸宗',     ultSub:'MYRIAD BLADES RETURN' },
+  { el:'metal', name:'白鋒‧斬鐵', skill:'金鐘罩',   skillCd:12, ultName:'金行奧義・萬刃殲滅砲',   ultSub:'GATLING OF MYRIAD BLADES' },
   { el:'wood',  name:'青藤‧生嵐', skill:'藤蔓縛地', skillCd:12, ultName:'木行奧義・世界樹之怒',   ultSub:'WRATH OF YGGDRASIL' },
   { el:'water', name:'寒淵‧洗川', skill:'凝冰領域', skillCd:12, ultName:'水行奧義・滄海萬川歸一', ultSub:'ALL RIVERS RETURN TO SEA' },
   { el:'fire',  name:'炎獄‧焚天', skill:'焰行者',   skillCd:8,  ultName:'火行奧義・焚天滅地鳳凰劫', ultSub:'PHOENIX CALAMITY' },
@@ -36,8 +36,11 @@ const GUNS = [
   { name:'奔雷衝鋒槍', en:'LEI-9 SMG',  dmg:16,  hs:1.8, mag:32, reload:2.2, rpm:820, spread:0.030, auto:true,  pellets:1, range:45 },
   { name:'裂空突擊槍', en:'LK-47 AR',   dmg:27,  hs:2.2, mag:30, reload:2.4, rpm:600, spread:0.018, auto:true,  pellets:1, range:90 },
   { name:'崩嶽霰彈槍', en:'BY-12 SG',   dmg:9,   hs:1.5, mag:6,  reload:2.9, rpm:75,  spread:0.075, auto:false, pellets:8, range:26 },
-  { name:'貫日狙擊槍', en:'GR-1 SNIPER',dmg:105, hs:2.0, mag:5,  reload:3.2, rpm:45,  spread:0.002, auto:false, pellets:1, range:400, zoom:true },
+  { name:'貫日狙擊槍', en:'GR-1 SNIPER',dmg:105, hs:2.0, mag:5,  reload:3.2, rpm:45,  spread:0.002, auto:false, pellets:1, range:400, zoom:true, pierce:1 },
+  // index 5：金系大招「萬刃殲滅砲」專用（不可手動切換）
+  { name:'萬刃殲滅砲', en:'MYRIAD GATLING', dmg:15, hs:1.6, mag:999, reload:0, rpm:1100, spread:0.035, auto:true, pellets:1, range:80, pierce:3 },
 ];
+const GUN_COUNT = 5;   // 玩家可持有的槍數（不含大招砲）
 const BOT_NAMES = ['哨兵‧甲','哨兵‧乙','哨兵‧丙','傀兵‧子','傀兵‧丑','傀兵‧寅','鐵衛‧壹','鐵衛‧貳'];
 
 const rand = (a,b)=> a + Math.random()*(b-a);
@@ -104,7 +107,7 @@ function mkSlot(i){
     hp:100, alive:true, respawnAt:0,
     pos:new THREE.Vector3(), ry:0, rx:0, moving:false, gun:2,
     kills:0, deaths:0, score:0, streak:0, ult:0,
-    fx:{burn:0,burnSrc:-1,slow:0,root:0,stun:0,shield:0,regen:0,haste:0},
+    fx:{burn:0,burnSrc:-1,slow:0,root:0,stun:0,shield:0,regen:0,haste:0,gat:0},
     skillCd:0,
     bot:null, avatar:null,
   };
@@ -577,7 +580,13 @@ function buildWorld(){
     const segs = []; let cur = a0;
     for (const g of [...gaps].sort((p,q)=>p.from-q.from)){
       if (g.from > cur) segs.push([cur, g.from, 0, h]);
-      if (g.window){ segs.push([g.from, g.to, 0, 1.05]); segs.push([g.from, g.to, 2.0, h]); }
+      if (g.window){
+        if (g.two){ // 上下雙排窗（供二樓夾層對外射擊）
+          segs.push([g.from, g.to, 0, 1.05]); segs.push([g.from, g.to, 2.0, 2.8]); segs.push([g.from, g.to, 4.1, h]);
+        } else {
+          segs.push([g.from, g.to, 0, 1.05]); segs.push([g.from, g.to, 2.0, h]);
+        }
+      }
       cur = g.to;
     }
     if (cur < a1) segs.push([cur, a1, 0, h]);
@@ -608,15 +617,21 @@ function buildWorld(){
   };
   const door = (at, wd=1.8)=> ({from:at-wd/2, to:at+wd/2});
   const win  = (at, wd=1.6)=> ({from:at-wd/2, to:at+wd/2, window:true});
+  const win2 = (at, wd=1.6)=> ({from:at-wd/2, to:at+wd/2, window:true, two:true});
 
-  // 中央倉庫（大空間、南門+西門、東西各開窗）
+  // 中央倉庫（大空間、南門+西門、北/東雙排窗——上排供二樓射擊）
   houseAA(0, 0, 26, 16, 4.6, matBrick, {
     s:[door(0, 6)], w:[door(0, 5)],
-    n:[win(-8,2.2), win(0,2.2), win(8,2.2)], e:[win(-4,2), win(4,2)],
+    n:[win2(-8,2.2), win2(0,2.2), win2(8,2.2)], e:[win2(-4,2), win2(4,2)],
   });
   box(3.4,1.3,1.6, matWood, -6, .65, 2);
   box(3.4,1.3,1.6, matWood,  6, .65, -2);
   box(1.3,1.3,1.3, matWood,  0, .65, -5);
+  // ── 倉庫二樓夾層：北半部平台（頂面 2.2m）＋東側樓梯 ──
+  box(25, 0.25, 6.5, matConc, 0, 2.075, -4.4);
+  box(25, 0.45, 0.14, matPlaster, 0, 2.42, -1.2, true, false);  // 南緣矮護欄（視覺）
+  for (let i=0;i<5;i++){ const sh = 0.42*(i+1);
+    box(0.6, sh, 1.3, matConc, 7.2 + i*0.6, sh/2, -0.3); }       // 自動上階樓梯
 
   // 民房 A（西北，斜頂、南門東窗）
   houseAA(-32, 27, 10, 8, 3.2, matPlaster, { s:[door(-32)], e:[win(27)], n:[win(-34,1.4)], gable:true });
@@ -787,6 +802,43 @@ function buildWorld(){
     }
     addCollider(px, pz, rot?1.9:4.6, rot?4.6:1.9, 1.7);
   }
+  // 鷹架高台 ×2（樓梯上平台，制高點）
+  const scaffold = (sx, sz)=>{
+    box(3.2, 0.22, 3.2, matWood, sx, 2.09, sz);                  // 平台頂 2.2
+    box(3.2, 0.42, 0.12, matWood, sx, 2.41, sz-1.55, true, false); // 護欄（視覺）
+    box(3.2, 0.42, 0.12, matWood, sx, 2.41, sz+1.55, true, false);
+    for (const [ox,oz] of [[-1.45,-1.45],[1.45,-1.45],[-1.45,1.45],[1.45,1.45]]){
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(.12,2.1,.12), pipeMat);
+      leg.position.set(sx+ox, 1.05, sz+oz);
+      leg.castShadow = true; scene.add(leg); worldMeshes.push(leg);
+    }
+    for (let i=0;i<5;i++){ const sh = 0.42*(i+1);
+      box(0.6, sh, 1.2, matWood, sx-1.9-(4-i)*0.6, sh/2, sz); }
+  };
+  scaffold(-18, -5);
+  scaffold(18, -2);
+
+  // 寫實天空：漸層天穹＋太陽
+  {
+    const cv = document.createElement('canvas'); cv.width=16; cv.height=256;
+    const c = cv.getContext('2d');
+    const g = c.createLinearGradient(0,0,0,256);
+    g.addColorStop(0,'#54789e'); g.addColorStop(.42,'#93accd');
+    g.addColorStop(.72,'#c8d2d4'); g.addColorStop(1,'#d8d2c2');
+    c.fillStyle = g; c.fillRect(0,0,16,256);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(340, 24, 16),
+      new THREE.MeshBasicMaterial({map:t, side:THREE.BackSide, fog:false, depthWrite:false}));
+    sky.renderOrder = -2;
+    scene.add(sky);
+    scene.background = null;
+    const sun = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color:0xfff2d0,
+      transparent:true, blending:THREE.AdditiveBlending, fog:false, depthWrite:false}));
+    sun.scale.set(70,70,1);
+    sun.position.copy(sunLight.position).normalize().multiplyScalar(300);
+    sun.renderOrder = -1;
+    scene.add(sun);
+  }
 }
 function towerAt(x,z, mat, flagColor){
   box(4,5,4, mat, x, 2.5, z);
@@ -889,15 +941,18 @@ function respawnLocal(){
 }
 
 function collideMove(pos, vel, dt, half=0.36, height=1.8){
-  // 分軸 AABB 碰撞
+  // 分軸 AABB 碰撞（含 0.55m 內自動上階：樓梯/矮台階直接走上去）
   const tryAxis = (axis, delta)=>{
     pos[axis] += delta;
     for (const c of colliders){
       if (pos.x+half>c.x0 && pos.x-half<c.x1 && pos.z+half>c.z0 && pos.z-half<c.z1 &&
           pos.y < c.y1 && pos.y+height > c.y0){
-        if (axis==='x') pos.x = delta>0 ? c.x0-half : c.x1+half;
-        else if (axis==='z') pos.z = delta>0 ? c.z0-half : c.z1+half;
-        else { // y
+        if (axis==='x' || axis==='z'){
+          const stepUp = c.y1 - pos.y;
+          if (stepUp > 0 && stepUp <= 0.55){ pos.y = c.y1; continue; }  // 自動上階
+          if (axis==='x') pos.x = delta>0 ? c.x0-half : c.x1+half;
+          else pos.z = delta>0 ? c.z0-half : c.z1+half;
+        } else { // y
           if (delta<0){ pos.y = c.y1; vel.y=0; return true; }
           else { pos.y = c.y0-height; vel.y=0; }
         }
@@ -968,7 +1023,8 @@ function updateLocal(dt){
     if (me.reloading <= 0){ me.ammo = GUNS[me.gun].mag; sfx('reload'); }
   } else if (mouseDownL && !rooted){
     tryFire();
-    if (!GUNS[me.gun].auto) mouseDownL = false;
+    const eff = slots[myIdx].fx.gat>0 ? GUNS[5] : GUNS[me.gun];
+    if (!eff.auto) mouseDownL = false;
   }
   const targetFov = me.zoomed && GUNS[me.gun].zoom ? 26 : 74;
   camera.fov += (targetFov-camera.fov)*Math.min(1,dt*14);
@@ -987,14 +1043,15 @@ function shootTargets(){
   return list;
 }
 function tryFire(){
-  const g = GUNS[me.gun];
-  if (me.fireCd > 0 || me.reloading>0) return;
-  if (me.ammo <= 0){ startReload(); return; }
+  const gat = slots[myIdx].fx.gat > 0;             // 萬刃殲滅砲形態
+  const g = gat ? GUNS[5] : GUNS[me.gun];
+  if (me.fireCd > 0 || (!gat && me.reloading>0)) return;
+  if (!gat && me.ammo <= 0){ startReload(); return; }
   me.fireCd = 60/g.rpm;
-  me.ammo--;
-  me.recoil += (g.dmg>60?0.035:0.012) * (me.zoomed?0.4:1);
-  me.spreadHeat = Math.min(1.6, me.spreadHeat + 0.28);
-  sfx(g.pellets>1||g.dmg>60?'shot2':'shot');
+  if (!gat) me.ammo--;
+  me.recoil += (gat?0.006 : (g.dmg>60?0.035:0.012)) * (me.zoomed?0.4:1);
+  me.spreadHeat = Math.min(1.6, me.spreadHeat + (gat?0.05:0.28));
+  sfx(g.pellets>1||g.dmg>60?'shot2':'shot', gat?.7:1);
   muzzleFlash();
   spawnCasing();
   const myEl = CHARS[slots[myIdx].char].el;
@@ -1002,6 +1059,7 @@ function tryFire(){
   const spread = g.spread * (me.zoomed&&g.zoom?0.15:1) * (1+me.spreadHeat);
   const origin = new THREE.Vector3(me.pos.x, EYE(), me.pos.z);
   const aimPitch = me.pitch + me.recoil;   // 子彈沿準星實際指向（含後座抬升）
+  const pierceMax = g.pierce || 0;         // 貫穿掩體層數（狙擊1層、殲滅砲3層）
   for (let p=0; p<g.pellets; p++){
     const dir = new THREE.Vector3(0,0,-1)
       .applyEuler(new THREE.Euler(aimPitch + rand(-spread,spread), me.yaw + rand(-spread,spread), 0, 'YXZ'));
@@ -1009,40 +1067,47 @@ function tryFire(){
     raycaster.far = g.range*1.6;
     const hits = raycaster.intersectObjects(shootTargets(), false);
     let end = origin.clone().addScaledVector(dir, g.range*1.6);
-    if (hits.length){
-      const h = hits[0];
-      end = h.point;
+    let pierced = 0;
+    for (const h of hits){
       const ud = h.object.userData || {};
-      if (ud.wallId !== undefined){
-        reportWallHit(ud.wallId, g.dmg);
-        impactElem(h.point, dir, myEl, true);
-      } else if (ud.barrel !== undefined){
-        reportBarrelHit(ud.barrel, g.dmg);
-        sparkBurst(h.point, 0xffcc66, 8, 4);
-      } else if (ud.slot !== undefined){
-        // 打中敵人
+      if (ud.slot !== undefined){
         showHitmark(ud.part==='head');
         sfx('hit');
-        reportHit(ud.slot, ud.part, me.gun, h.distance);
+        reportHit(ud.slot, ud.part, gat?5:me.gun, h.distance);
         const vs = slots[ud.slot];
         sparkBurst(h.point, vs ? EL[CHARS[vs.char].el].color : 0xff4444, 6, 2.5);
         spawnSmoke(h.point.x, h.point.y, h.point.z, {n:2, size:.5, color:0x883333, rise:.4, life:.6, grow:.5, opacity:.5, spread:.15});
-      } else {
-        impactElem(h.point, dir, myEl, false);
-        if (h.face){  // 彈孔焦痕（依表面法向貼附）
-          const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
-          addDecal(h.point, n, rand(.04,.07), 20);
-        }
-        if (p===0) reportGroundHit(h.point);   // 子彈屬性改造場地（每發判定一次）
+        end = h.point;
+        break;
       }
+      if (ud.barrel !== undefined){
+        reportBarrelHit(ud.barrel, g.dmg);
+        sparkBurst(h.point, 0xffcc66, 8, 4);
+        if (pierced < pierceMax){ pierced++; continue; }
+        end = h.point; break;
+      }
+      if (ud.wallId !== undefined){
+        reportWallHit(ud.wallId, g.dmg);
+        impactElem(h.point, dir, myEl, true);
+        if (pierced < pierceMax){ pierced++; continue; }
+        end = h.point; break;
+      }
+      // 場景表面
+      impactElem(h.point, dir, myEl, false);
+      if (h.face){
+        const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+        addDecal(h.point, n, rand(.04,.07), 20);
+      }
+      if (p===0 && pierced===0) reportGroundHit(h.point);   // 場地改造只在第一層表面判定
+      if (pierced < pierceMax){ pierced++; continue; }      // 貫穿：繼續往後找目標
+      end = h.point; break;
     }
     const muzzle = camera.localToWorld(new THREE.Vector3(0.18, -0.16, -0.7));
-    spawnBolt(muzzle, end, myEl);              // 射出元素本身
-    if (myEl==='metal') tracer(muzzle, end, elColor);   // 只有飛刃保留掠光
-    // 廣播開火（讓別人看到曳光）
+    spawnBolt(muzzle, end, myEl);
+    if (myEl==='metal' || gat) tracer(muzzle, end, gat?0xffe9a0:elColor);   // 飛刃/殲滅砲掠光
     netFire(origin, end);
   }
-  if (me.ammo===0) startReload();
+  if (!gat && me.ammo===0) startReload();
   updateAmmoUI();
 }
 /* 依屬性的彈著特效 */
@@ -1184,7 +1249,7 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
   const att = slots[attIdx], vic = slots[vicIdx];
   if (!att || !vic || !att.alive || !vic.alive || att.team===vic.team) return;
   if (vic.fx.shield > 0){ addUlt(att, 2); return; }
-  const g = GUNS[clamp(gunIdx,0,4)];
+  const g = GUNS[clamp(gunIdx,0,5)];
   const aEl = CHARS[att.char].el, vEl = CHARS[vic.char].el;
   let dmg = g.dmg;
   const falloff = clamp(1 - Math.max(0, dist-g.range)/g.range, 0.35, 1);
@@ -1390,7 +1455,7 @@ function hostUseUlt(idx){
   const ev = {t:'ev', k:'ult', i:idx, el, p:[+s.pos.x.toFixed(1),+s.pos.y.toFixed(1),+s.pos.z.toFixed(1)]};
   const foes = slots.filter(o=> o.ctrl!=='empty' && o.alive && o.team!==s.team);
   if (el==='metal'){
-    s.fx.bladeT = 6; s.fx.bladeTick = 0;
+    s.fx.gat = 8;   // 萬刃殲滅砲：8 秒加特林形態，子彈貫穿掩體
   } else if (el==='wood'){
     hostHeal(s, 100); s.fx.regen = 5;
     for (const o of foes) if (o.pos.distanceTo(s.pos)<28){ o.fx.root = 3; }
@@ -2086,6 +2151,7 @@ function botThink(s, dt){
     for (const w of wallsLive.values()) blockers.push(...w.meshes);
     for (const sb of smokeBlockers) blockers.push(sb.mesh);   // 蒸汽/煙霧擋 AI 視線
     seeTarget = raycaster.intersectObjects(blockers, false).length === 0;
+    if (s.fx.gat > 0) seeTarget = true;   // 殲滅砲：貫穿掩體無視遮蔽
   }
 
   let speed = 4.0 * (fx.slow>0?0.6:1) * (fx.haste>0?1.4:1);
@@ -2109,10 +2175,10 @@ function botThink(s, dt){
     b.fireCd -= dt;
     if (b.reload > 0){ b.reload -= dt; if(b.reload<=0) b.ammo = g.mag; }
     else if (Math.abs(dy) < 0.15 && b.fireCd<=0){
-      b.fireCd = 60/g.rpm * (g.auto? rand(1,1.6) : rand(1.2,2));
-      b.ammo--;
-      if (b.ammo<=0){ b.reload = g.reload; }
-      botShoot(s, target, td, g);
+      const gat = s.fx.gat > 0;
+      b.fireCd = gat ? 0.07 : 60/g.rpm * (g.auto? rand(1,1.6) : rand(1.2,2));
+      if (!gat){ b.ammo--; if (b.ammo<=0) b.reload = g.reload; }
+      botShoot(s, target, td, gat ? GUNS[5] : g, gat);
     }
     // 技能
     if (s.skillCd<=0 && Math.random()<dt*0.25){ hostUseSkill(s.idx, {
@@ -2154,11 +2220,11 @@ function botThink(s, dt){
     b.px = s.pos.x; b.pz = s.pos.z;
   } else s.moving = false;
 }
-function botShoot(s, target, dist, g){
+function botShoot(s, target, dist, g, gat=false){
   // 由 AI 準度決定是否命中
   const o = [s.pos.x, s.pos.y+1.5, s.pos.z];
   const err = 0.5 + dist*0.05;
-  const hitP = clamp(0.62 - dist*0.008 - (target.moving?0.14:0), 0.06, 0.6);
+  const hitP = clamp((gat?0.4:0.62) - dist*0.008 - (target.moving?0.14:0), 0.06, 0.6);
   const aim = new THREE.Vector3(target.pos.x+rand(-err,err), target.pos.y+1.2+rand(-err*0.4,err*0.4), target.pos.z+rand(-err,err));
   const ev = {t:'fire', i:s.idx, o:[+o[0].toFixed(1),+o[1].toFixed(1),+o[2].toFixed(1)],
               e:[+aim.x.toFixed(1),+aim.y.toFixed(1),+aim.z.toFixed(1)]};
@@ -2167,7 +2233,7 @@ function botShoot(s, target, dist, g){
   for (let p=0;p<g.pellets;p++){
     if (Math.random() < hitP){
       const part = Math.random()<0.12 ? 'head':'body';
-      hostApplyHit(s.idx, target.idx, part, s.gun, dist);
+      hostApplyHit(s.idx, target.idx, part, gat?5:s.gun, dist);
     }
   }
 }
@@ -2179,7 +2245,7 @@ function hostTick(dt){
     if (s.ctrl==='empty') continue;
     // 狀態效果
     const fx = s.fx;
-    for (const k of ['slow','root','stun','shield','regen','haste']) if (fx[k]>0) fx[k]-=dt;
+    for (const k of ['slow','root','stun','shield','regen','haste','gat']) if (fx[k]>0) fx[k]-=dt;
     if (fx.burn>0){
       fx.burn-=dt;
       if (s.alive){ hostDamage(s, 6*dt, slots[fx.burnSrc], false, '灼燒'); }
@@ -2187,23 +2253,6 @@ function hostTick(dt){
     if (fx.regen>0 && s.alive) hostHeal(s, 12*dt);
     if (s.skillCd>0) s.skillCd-=dt;
     addUlt(s, dt*0.8);
-    // 金大招：持續斬擊
-    if (fx.bladeT>0 && s.alive){
-      fx.bladeT-=dt; fx.bladeTick-=dt;
-      if (fx.bladeTick<=0){
-        fx.bladeTick=0.45;
-        let best=null,bd=1e9;
-        for (const o of slots) if (o.ctrl!=='empty'&&o.alive&&o.team!==s.team){
-          const d=o.pos.distanceTo(s.pos); if(d<26&&d<bd){bd=d;best=o;}
-        }
-        if (best){
-          hostDamage(best, 26*elemMult('metal',CHARS[best.char].el), s, false, '萬刃歸宗');
-          const ev={t:'fire', i:s.idx, o:[+s.pos.x.toFixed(1), +(s.pos.y+1.6).toFixed(1), +s.pos.z.toFixed(1)],
-                    e:[+best.pos.x.toFixed(1), +(best.pos.y+1.2).toFixed(1), +best.pos.z.toFixed(1)]};
-          bcast(ev); remoteTracer(ev.o, ev.e, s.idx);
-        }
-      }
-    }
     // 重生
     if (!s.alive && t >= s.respawnAt && s.respawnAt>0){
       s.alive = true; s.hp = 100; s.respawnAt = 0;
@@ -2246,7 +2295,7 @@ function snapshotTick(){
     +s.pos.x.toFixed(2), +s.pos.y.toFixed(2), +s.pos.z.toFixed(2),
     +s.ry.toFixed(3), +s.rx.toFixed(3),
     Math.round(s.hp), s.alive?1:0, s.gun, s.moving?1:0,
-    (s.fx.burn>0?1:0)|(s.fx.slow>0?2:0)|(s.fx.root>0?4:0)|(s.fx.stun>0?8:0)|(s.fx.shield>0?16:0)|(s.fx.haste>0?32:0),
+    (s.fx.burn>0?1:0)|(s.fx.slow>0?2:0)|(s.fx.root>0?4:0)|(s.fx.stun>0?8:0)|(s.fx.shield>0?16:0)|(s.fx.haste>0?32:0)|(s.fx.gat>0?64:0),
     Math.round(s.ult),
   ]);
   bcast({t:'st', time:Math.round(matchT), r:scores.red, b:scores.blue, pl});
@@ -2260,7 +2309,7 @@ function applySnapshot(d){
     s.hp = p[5]; s.alive = !!p[6]; s.ult = p[10];
     const fb = p[9];
     s.fx.burn = fb&1?1:0; s.fx.slow = fb&2?1:0; s.fx.root = fb&4?1:0;
-    s.fx.stun = fb&8?1:0; s.fx.shield = fb&16?1:0; s.fx.haste = fb&32?1:0;
+    s.fx.stun = fb&8?1:0; s.fx.shield = fb&16?1:0; s.fx.haste = fb&32?1:0; s.fx.gat = fb&64?1:0;
     if (i === myIdx){
       if (s.alive && p[5] < s._lastHp) hurtFeedback();
       s._lastHp = p[5];
@@ -2364,6 +2413,11 @@ function buildXhair(){
 }
 buildXhair();
 function updateAmmoUI(){
+  if (slots[myIdx] && slots[myIdx].fx.gat > 0){
+    $('ammo').innerHTML = '∞';
+    $('gunname').textContent = GUNS[5].name+' · '+GUNS[5].en;
+    return;
+  }
   const g = GUNS[me.gun];
   $('ammo').innerHTML = (me.reloading>0?'--':me.ammo) + `<small> / ${g.mag}</small>`;
   $('gunname').textContent = g.name+' · '+g.en;
@@ -2422,8 +2476,10 @@ function updateHUD(){
   cs.textContent = 'E · '+CHARS[s.char].skill + (cd>0 ? ` ${cd.toFixed(1)}s` : '');
   cs.classList.toggle('ready', cd<=0);
   const cu = $('chipUlt');
-  cu.textContent = s.ult>=100 ? 'Q · 大招就緒！' : `Q · 大招 ${Math.floor(s.ult)}%`;
-  cu.classList.toggle('charged', s.ult>=100);
+  cu.textContent = s.fx.gat>0 ? 'Q · 殲滅砲全開！' : (s.ult>=100 ? 'Q · 大招就緒！' : `Q · 大招 ${Math.floor(s.ult)}%`);
+  cu.classList.toggle('charged', s.ult>=100 || s.fx.gat>0);
+  const gatOn = s.fx.gat>0;
+  if (gatOn !== updateHUD._gat){ updateHUD._gat = gatOn; updateAmmoUI(); }
   if (netMode!=='solo') $('netstat').textContent =
     (netMode==='host'?'房主 · ':'') + '房間 '+roomCodeStr+' · '+slots.filter(x=>x.ctrl==='net').length+' 位連線玩家';
 }
@@ -2443,7 +2499,7 @@ addEventListener('keydown', e=>{
   if (e.code==='KeyQ') localUlt();
   if (e.code.startsWith('Digit')){
     const i = +e.code.slice(5)-1;
-    if (GUNS[i]) switchGun(i);
+    if (i < GUN_COUNT && GUNS[i]) switchGun(i);
   }
 });
 function switchGun(i){
@@ -2560,7 +2616,7 @@ if (IS_TOUCH){
   bind('btnSkillT', ()=> doSkill());
   bind('btnUltT', ()=> localUlt());
   bind('btnJumpT', ()=>{ keys.Space = true; setTimeout(()=> keys.Space=false, 120); });
-  bind('btnGunT', ()=> switchGun((me.gun+1)%GUNS.length));
+  bind('btnGunT', ()=> switchGun((me.gun+1)%GUN_COUNT));
   bind('btnZoomT', ()=>{ me.zoomed = !me.zoomed && GUNS[me.gun].zoom; });
 }
 addEventListener('mouseup', e=>{ if(e.button===0) mouseDownL=false; });
