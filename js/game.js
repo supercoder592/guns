@@ -997,7 +997,8 @@ function updateLocal(dt){
   me.vel.x += (wish.x-me.vel.x)*Math.min(1, dt*12);
   me.vel.z += (wish.z-me.vel.z)*Math.min(1, dt*12);
   me.vel.y -= 15*dt;
-  if (keys.Space && me.onGround && !rooted){ me.vel.y = 5.6; me.onGround=false; }
+  const jumpQueued = touchJump > 0 && now()-touchJump < 0.4;
+  if ((keys.Space || jumpQueued) && me.onGround && !rooted){ me.vel.y = 5.6; me.onGround=false; touchJump = 0; }
   me.onGround = collideMove(me.pos, me.vel, dt);
   me.pos.x = clamp(me.pos.x, -58, 58);
   me.pos.z = clamp(me.pos.z, -58, 58);
@@ -2627,6 +2628,7 @@ addEventListener('mousedown', e=>{
 
 /* ---------- 手機觸控：左半搖桿移動、右半滑動瞄準、按鈕操作 ---------- */
 const touchIn = { moveId:null, aimId:null, bx:0, by:0, lx:0, ly:0, mvx:0, mvy:0 };
+let touchJump = 0;   // 觸控跳躍排隊時間戳
 if (IS_TOUCH){
   const cv = $('c3d');
   const joyB = $('joyBase'), joyK = $('joyKnob');
@@ -2683,11 +2685,21 @@ if (IS_TOUCH){
   };
   cv.addEventListener('touchend', endT);
   cv.addEventListener('touchcancel', endT);
-  // 按鈕
+  // 按鈕（含按壓回饋、震動、失敗紅閃）
+  const buzz = ms=>{ try{ navigator.vibrate && navigator.vibrate(ms); }catch(_){} };
+  const press = el=>{ el.classList.add('pressed'); setTimeout(()=> el.classList.remove('pressed'), 140); };
+  const deny  = el=>{ el.classList.add('deny'); buzz([30,40,30]); setTimeout(()=> el.classList.remove('deny'), 260); };
   const bind = (id, down, up)=>{
     const el = $(id);
-    el.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); down(); }, {passive:false});
-    if (up) el.addEventListener('touchend', e=>{ e.preventDefault(); up(); }, {passive:false});
+    el.addEventListener('touchstart', e=>{
+      e.preventDefault(); e.stopPropagation();
+      press(el);
+      const ok = down();
+      if (ok === false) deny(el); else buzz(12);
+    }, {passive:false});
+    const endH = e=>{ e.preventDefault(); if (up) up(); };
+    el.addEventListener('touchend', endH, {passive:false});
+    el.addEventListener('touchcancel', endH, {passive:false});
   };
   // 開火鈕：按住連射、拖曳同時轉視角（觸控事件會持續回到起始元素）
   const fb = $('btnFireT');
@@ -2697,6 +2709,9 @@ if (IS_TOUCH){
     const t = e.changedTouches[0];
     fireT.id = t.identifier; fireT.lx = t.clientX; fireT.ly = t.clientY;
     mouseDownL = true;
+    if (started && !me.dead) tryFire();   // 按下瞬間立即射擊，快速點按不漏發
+    fb.classList.add('pressed');
+    try{ navigator.vibrate && navigator.vibrate(10); }catch(_){}
   }, {passive:false});
   fb.addEventListener('touchmove', e=>{
     e.preventDefault();
@@ -2709,13 +2724,24 @@ if (IS_TOUCH){
     }
   }, {passive:false});
   const fireEnd = e=>{
-    for (const t of e.changedTouches) if (t.identifier === fireT.id){ fireT.id = null; mouseDownL = false; }
+    for (const t of e.changedTouches) if (t.identifier === fireT.id){
+      fireT.id = null; mouseDownL = false; fb.classList.remove('pressed');
+    }
   };
   fb.addEventListener('touchend', fireEnd);
   fb.addEventListener('touchcancel', fireEnd);
-  bind('btnSkillT', ()=> doSkill());
-  bind('btnUltT', ()=> localUlt());
-  bind('btnJumpT', ()=>{ keys.Space = true; setTimeout(()=> keys.Space=false, 120); });
+  bind('btnSkillT', ()=>{
+    const cd = isHost ? slots[myIdx].skillCd : localSkillCd;
+    if (me.dead || cd > 0) return false;   // 冷卻中：紅閃提示
+    doSkill();
+  });
+  bind('btnUltT', ()=>{
+    if (me.dead || slots[myIdx].ult < 100) return false;   // 未集滿：紅閃提示
+    localUlt();
+  });
+  bind('btnJumpT', ()=>{
+    touchJump = now();   // 排隊 0.4 秒內有效，不會被幀間吃掉
+  });
   bind('btnGunT', ()=> switchGun((me.gun+1)%GUN_COUNT));
   bind('btnZoomT', ()=>{ me.zoomed = !me.zoomed && GUNS[me.gun].zoom; });
 }
