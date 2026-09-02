@@ -843,8 +843,12 @@ function updateLocal(dt){
   if (keys.KeyS) wish.sub(f);
   if (keys.KeyD) wish.add(r);
   if (keys.KeyA) wish.sub(r);
-  if (touchMove){ wish.addScaledVector(f, -touchIn.mvy).addScaledVector(r, touchIn.mvx); }
-  if (wish.lengthSq()>0) wish.normalize().multiplyScalar(speed);
+  if (touchMove && touchMag > 0.12){ wish.addScaledVector(f, -touchIn.mvy).addScaledVector(r, touchIn.mvx); }
+  if (wish.lengthSq()>0){
+    // 觸控為類比搖桿：推多少走多快；鍵盤為全速
+    const analog = touchMove ? clamp((touchMag-0.12)/0.75, 0.15, 1) : 1;
+    wish.normalize().multiplyScalar(speed * analog);
+  }
   // 平滑加速
   me.vel.x += (wish.x-me.vel.x)*Math.min(1, dt*12);
   me.vel.z += (wish.z-me.vel.z)*Math.min(1, dt*12);
@@ -908,9 +912,10 @@ function tryFire(){
   const elColor = EL[myEl].color;
   const spread = g.spread * (me.zoomed&&g.zoom?0.15:1) * (1+me.spreadHeat);
   const origin = new THREE.Vector3(me.pos.x, EYE(), me.pos.z);
+  const aimPitch = me.pitch + me.recoil;   // 子彈沿準星實際指向（含後座抬升）
   for (let p=0; p<g.pellets; p++){
     const dir = new THREE.Vector3(0,0,-1)
-      .applyEuler(new THREE.Euler(me.pitch + rand(-spread,spread), me.yaw + rand(-spread,spread), 0, 'YXZ'));
+      .applyEuler(new THREE.Euler(aimPitch + rand(-spread,spread), me.yaw + rand(-spread,spread), 0, 'YXZ'));
     raycaster.set(origin, dir);
     raycaster.far = g.range*1.6;
     const hits = raycaster.intersectObjects(shootTargets(), false);
@@ -2256,7 +2261,14 @@ if (IS_TOUCH){
       if (t.identifier === touchIn.moveId){
         let dx = t.clientX-touchIn.bx, dy = t.clientY-touchIn.by;
         const len = Math.hypot(dx,dy), max = 52;
-        if (len > max){ dx = dx/len*max; dy = dy/len*max; }
+        if (len > max){
+          // 底座跟隨手指滑移（超出範圍時），方向切換更順手
+          touchIn.bx += dx/len*(len-max);
+          touchIn.by += dy/len*(len-max);
+          joyB.style.left = touchIn.bx+'px';
+          joyB.style.top  = touchIn.by+'px';
+          dx = dx/len*max; dy = dy/len*max;
+        }
         touchIn.mvx = dx/max; touchIn.mvy = dy/max;
         joyK.style.left = (touchIn.bx+dx)+'px';
         joyK.style.top  = (touchIn.by+dy)+'px';
@@ -2285,7 +2297,30 @@ if (IS_TOUCH){
     el.addEventListener('touchstart', e=>{ e.preventDefault(); e.stopPropagation(); down(); }, {passive:false});
     if (up) el.addEventListener('touchend', e=>{ e.preventDefault(); up(); }, {passive:false});
   };
-  bind('btnFireT', ()=>{ mouseDownL = true; }, ()=>{ mouseDownL = false; });
+  // 開火鈕：按住連射、拖曳同時轉視角（觸控事件會持續回到起始元素）
+  const fb = $('btnFireT');
+  const fireT = { id:null, lx:0, ly:0 };
+  fb.addEventListener('touchstart', e=>{
+    e.preventDefault(); e.stopPropagation();
+    const t = e.changedTouches[0];
+    fireT.id = t.identifier; fireT.lx = t.clientX; fireT.ly = t.clientY;
+    mouseDownL = true;
+  }, {passive:false});
+  fb.addEventListener('touchmove', e=>{
+    e.preventDefault();
+    for (const t of e.changedTouches){
+      if (t.identifier !== fireT.id) continue;
+      const sens = 0.0045 * (me.zoomed?0.45:1);
+      me.yaw   -= (t.clientX-fireT.lx)*sens;
+      me.pitch  = clamp(me.pitch-(t.clientY-fireT.ly)*sens, -1.45, 1.45);
+      fireT.lx = t.clientX; fireT.ly = t.clientY;
+    }
+  }, {passive:false});
+  const fireEnd = e=>{
+    for (const t of e.changedTouches) if (t.identifier === fireT.id){ fireT.id = null; mouseDownL = false; }
+  };
+  fb.addEventListener('touchend', fireEnd);
+  fb.addEventListener('touchcancel', fireEnd);
   bind('btnSkillT', ()=> doSkill());
   bind('btnUltT', ()=> localUlt());
   bind('btnJumpT', ()=>{ keys.Space = true; setTimeout(()=> keys.Space=false, 120); });
