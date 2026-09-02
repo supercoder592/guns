@@ -2486,7 +2486,7 @@ function boardHTML(rows, r, b){
 function buildXhair(){
   const x = $('xhair');
   x.innerHTML = '';
-  for (const [w,h,l,t] of [[2,10,21,0],[2,10,21,34],[10,2,0,21],[10,2,34,21]]){
+  for (const [w,h,l,t] of [[2,6,12,0],[2,6,12,20],[6,2,0,12],[6,2,20,12]]){
     const s = document.createElement('span');
     s.style.cssText = `width:${w}px;height:${h}px;left:${l}px;top:${t}px`;
     x.appendChild(s);
