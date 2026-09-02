@@ -899,7 +899,7 @@ function makeAvatar(slot){
   hbar.scale.set(1.1,.12,1); hbar.position.y=1.92; g.add(hbar);
   g.visible = false;
   scene.add(g);
-  slot.avatar = {group:g, legL, legR, head, torso, vest, parts:[head,torso,vest,legL,legR], hcv, htex, walk:0, lastHp:-1};
+  slot.avatar = {group:g, legL, legR, head, torso, vest, gunM:gun, parts:[head,torso,vest,legL,legR], hcv, htex, walk:0, lastHp:-1};
   updateHpBar(slot);
 }
 function updateHpBar(slot){
@@ -1026,9 +1026,17 @@ function updateLocal(dt){
     const eff = slots[myIdx].fx.gat>0 ? GUNS[5] : GUNS[me.gun];
     if (!eff.auto) mouseDownL = false;
   }
-  const targetFov = me.zoomed && GUNS[me.gun].zoom ? 26 : 74;
+  const targetFov = me.zoomed && GUNS[me.gun].zoom ? 22 : 74;
   camera.fov += (targetFov-camera.fov)*Math.min(1,dt*14);
   camera.updateProjectionMatrix();
+  // 狙擊鏡遮罩：開鏡時隱藏槍模與準星，顯示鏡內視野
+  const scoped = me.zoomed && GUNS[me.gun].zoom && camera.fov < 46;
+  if (scoped !== me._scoped){
+    me._scoped = scoped;
+    $('scopeOv').classList.toggle('hidden', !scoped);
+    $('xhair').style.display = scoped ? 'none' : '';
+    if (viewmodel) viewmodel.visible = !scoped;
+  }
 }
 
 /* ------------------------- 射擊 ------------------------- */
@@ -1216,32 +1224,105 @@ function buildViewmodel(){
 }
 function rebuildViewmodel(){
   while(viewmodel.children.length) viewmodel.remove(viewmodel.children[0]);
-  const g = GUNS[me.gun];
-  const matG = new THREE.MeshStandardMaterial({color:0x555d68, roughness:.55, metalness:.18});
-  const matD = new THREE.MeshStandardMaterial({color:0x3d444e, roughness:.6, metalness:.15});
-  const matW = new THREE.MeshStandardMaterial({map:TEX.wood, roughness:.8});
   const e = EL[CHARS[slots[myIdx]?.char ?? selChar].el];
-  const matE = new THREE.MeshStandardMaterial({color:e.color, emissive:e.color, emissiveIntensity:1.2});
-  const len = 0.3 + g.range/650;
-  const body = new THREE.Mesh(new THREE.BoxGeometry(.055,.08,len), matG); body.position.set(0,0,-len/2);
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.016,.016,.2,8), matD);
-  barrel.rotation.x = Math.PI/2; barrel.position.set(0,.012,-len-.08);
-  const grip = new THREE.Mesh(new THREE.BoxGeometry(.04,.1,.05), matW); grip.position.set(0,-.08,-.04);
-  const mag  = new THREE.Mesh(new THREE.BoxGeometry(.035,.1,.045), matD); mag.position.set(0,-.08,-.17);
-  const trim = new THREE.Mesh(new THREE.BoxGeometry(.06,.012,.07), matE); trim.position.set(0,.045,-.2);
-  viewmodel.add(body,barrel,grip,mag,trim);
-  if (g.zoom){ const scope = new THREE.Mesh(new THREE.CylinderGeometry(.024,.024,.14,8), matD);
-    scope.rotation.x = Math.PI/2; scope.position.set(0,.065,-.26); viewmodel.add(scope); }
+  // 寫實槍材
+  const M = {
+    black: new THREE.MeshStandardMaterial({color:0x23272d, roughness:.5,  metalness:.35}),
+    dark:  new THREE.MeshStandardMaterial({color:0x363c45, roughness:.55, metalness:.25}),
+    steel: new THREE.MeshStandardMaterial({color:0x7b838c, roughness:.35, metalness:.3}),
+    wood:  new THREE.MeshStandardMaterial({map:TEX.wood,  roughness:.75}),
+    poly:  new THREE.MeshStandardMaterial({color:0x2e3237, roughness:.75, metalness:.05}),
+    elem:  new THREE.MeshStandardMaterial({color:e.color, emissive:e.color, emissiveIntensity:1.1}),
+  };
+  const B = (w,h,d,mat,x,y,z,rx=0,rz=0)=>{
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
+    m.position.set(x,y,z); m.rotation.x = rx; m.rotation.z = rz;
+    viewmodel.add(m); return m;
+  };
+  const C = (r,ln,mat,x,y,z)=>{
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r,r,ln,10), mat);
+    m.rotation.x = Math.PI/2; m.position.set(x,y,z);
+    viewmodel.add(m); return m;
+  };
+  let len = 0.5;
+  switch (me.gun){
+    case 0: // 靈息手槍：滑套、擊錘、握把、扳機護弓、前後準星
+      len = 0.3;
+      B(.052,.05,.26, M.steel, 0,.045,-.12);        // 滑套
+      B(.056,.016,.1,  M.black, 0,.02,-.2);          // 滑套鋸齒段
+      B(.048,.04,.19, M.dark,  0,.0,-.1);            // 下槍身
+      B(.044,.13,.062,M.poly,  0,-.07,-.005,.32);    // 握把（後傾）
+      B(.012,.008,.055,M.dark, 0,-.033,-.085);       // 扳機護弓下緣
+      B(.012,.03,.008, M.dark, 0,-.02,-.11);         // 護弓前柱
+      B(.008,.016,.012,M.black,0,.078,-.245);        // 前準星
+      B(.024,.012,.012,M.black,0,.076,-.015);        // 照門
+      C(.009,.03, M.black, 0,.045,-.265);            // 槍口
+      B(.012,.028,.02, M.steel,0,.06,.005,-.5);      // 擊錘
+      break;
+    case 1: // 奔雷衝鋒槍：MP5 造型——粗護木、彎彈匣、折疊托
+      len = 0.48;
+      B(.058,.068,.32, M.black, 0,.02,-.16);         // 機匣
+      B(.064,.072,.15, M.poly,  0,.012,-.34);        // 粗護木
+      C(.013,.12, M.dark, 0,.032,-.47);              // 槍管
+      B(.01,.035,.012, M.black, 0,.08,-.42);         // 前準星柱
+      B(.026,.026,.02, M.black, 0,.072,-.05);        // 照門座
+      B(.034,.13,.05,  M.dark, 0,-.085,-.2,.3);      // 彎彈匣上段
+      B(.034,.1,.05,   M.dark, 0,-.185,-.135,.55);   // 彎彈匣下段
+      B(.04,.11,.05,   M.poly, 0,-.07,-.04,.3);      // 握把
+      B(.014,.05,.12,  M.steel,0,.02,.05);           // 折疊托桿
+      C(.007,.05, M.steel, .045,.045,-.12);          // 拉機柄
+      break;
+    case 2: // 裂空突擊槍：AK 造型——木護木、彎彈匣、槍口制退器
+      len = 0.58;
+      B(.056,.076,.26, M.black, 0,.02,-.18);         // 機匣
+      B(.058,.056,.2,  M.wood,  0,.018,-.42);        // 木護木
+      C(.011,.17, M.dark, 0,.032,-.6);               // 槍管
+      C(.008,.2,  M.dark, 0,.058,-.44);              // 導氣管
+      C(.015,.055,M.black,0,.032,-.68);              // 制退器
+      B(.01,.05,.012, M.black, 0,.08,-.56);          // 前準星
+      B(.024,.02,.05, M.black, 0,.075,-.12);         // 表尺照門
+      B(.036,.14,.06, M.dark, 0,-.1,-.235,.4);       // 彎彈匣
+      B(.04,.11,.05,  M.wood, 0,-.07,-.05,.28);      // 握把
+      B(.05,.07,.16,  M.wood, 0,-.005,.06,-.06);     // 槍托
+      break;
+    case 3: // 崩嶽霰彈槍：泵動——雙管配置（槍管+彈倉管）、木質泵把
+      len = 0.62;
+      B(.058,.072,.2, M.black, 0,.018,-.14);         // 機匣
+      C(.013,.42, M.dark, 0,.052,-.45);              // 上槍管
+      C(.011,.36, M.dark, 0,.008,-.44);              // 下彈倉管
+      B(.056,.058,.13, M.wood, 0,.005,-.4);          // 泵動護木
+      B(.05,.08,.15,   M.wood, 0,-.01,.05,-.08);     // 槍托
+      B(.008,.01,.01,  M.steel,0,.078,-.655);        // 珠狀準星
+      B(.04,.1,.05,    M.wood, 0,-.068,-.03,.3);     // 握把
+      break;
+    case 4: // 貫日狙擊槍：栓動——長管、狙擊鏡組、槍栓、腳架
+      len = 0.78;
+      B(.052,.066,.26, M.black, 0,.015,-.18);        // 機匣
+      C(.012,.5,  M.dark, 0,.04,-.56);               // 長槍管
+      B(.03,.03,.06,   M.black, 0,.04,-.8);          // 制退器
+      B(.05,.085,.2,   M.poly,  0,-.012,.06,-.05);   // 槍托
+      B(.044,.026,.12, M.poly,  0,.052,.05);         // 貼腮板
+      C(.026,.2,  M.black, 0,.115,-.13);             // 鏡身
+      C(.035,.055,M.black, 0,.115,-.255);            // 物鏡
+      C(.03,.05,  M.black, 0,.115,-.015);            // 目鏡
+      B(.014,.045,.02, M.dark, 0,.085,-.19);         // 鏡架前
+      B(.014,.045,.02, M.dark, 0,.085,-.07);         // 鏡架後
+      C(.007,.05, M.steel, .05,.04,-.1);             // 槍栓
+      B(.02,.02,.02,   M.steel, .075,.025,-.1);      // 栓柄球
+      B(.008,.15,.008, M.dark, -.03,-.05,-.62,0,.35);// 腳架左
+      B(.008,.15,.008, M.dark,  .03,-.05,-.62,0,-.35);// 腳架右
+      break;
+  }
+  B(.044,.011,.05, M.elem, 0,.088,-.02);             // 屬性紋章（機匣頂）
   if (muzzleSprite){
-    muzzleSprite.position.set(0.22, -0.19, -0.38-(len+0.2)*0.8);
-    const ec = new THREE.Color(e.color).lerp(new THREE.Color(0xffffff), 0.55);
-    muzzleSprite.material.color = ec;   // 槍口焰帶屬性色調
+    muzzleSprite.position.set(0.22, -0.19, -0.38-(len+0.1)*0.8);
+    muzzleSprite.material.color = new THREE.Color(e.color).lerp(new THREE.Color(0xffffff), 0.55);
   }
   viewmodel.position.set(0.22,-0.2,-0.38);
   viewmodel.rotation.y = 0.05;
   viewmodel.rotation.x = 0.02;
   viewmodel.scale.setScalar(0.8);
-  if (flashLight) flashLight.color.set(e.color);   // 槍口焰依屬性變色
+  if (flashLight) flashLight.color.set(e.color);
 }
 
 /* ------------------------- 主機端：傷害裁決 ------------------------- */
@@ -2673,6 +2754,7 @@ function frame(){
     a.walk += dt * (s.moving?9:0);
     const sw = s.moving ? Math.sin(a.walk)*0.55 : 0;
     a.legL.rotation.x = sw; a.legR.rotation.x = -sw;
+    a.gunM.scale.z = [0.55,0.85,1,1.15,1.5][s.gun] || 1;   // 依武器調整槍長
     // 狀態光環
     if (s.fx.shield>0){
       if (!a.shieldM){

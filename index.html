@@ -167,6 +167,16 @@
   body.touch #topbar{gap:12px;padding:5px 14px}
   body.touch #topbar #tRed, body.touch #topbar #tBlue{font-size:17px}
   body.touch #topbar #timer{font-size:14px}
+
+  /* ===== 狙擊鏡 ===== */
+  #scopeOv{position:fixed;inset:0;z-index:12;pointer-events:none;
+    background:radial-gradient(circle at 50% 50%, transparent 31%, rgba(0,0,0,.55) 33.5%, rgba(0,0,0,.985) 36%)}
+  #scopeOv::before{content:'';position:absolute;left:50%;top:0;bottom:0;width:1.5px;
+    background:rgba(0,0,0,.85);transform:translateX(-50%)}
+  #scopeOv::after{content:'';position:absolute;top:50%;left:0;right:0;height:1.5px;
+    background:rgba(0,0,0,.85);transform:translateY(-50%)}
+  #scopeOv .ring{position:absolute;left:50%;top:50%;width:9px;height:9px;border:1.5px solid rgba(200,30,30,.9);
+    border-radius:50%;transform:translate(-50%,-50%)}
 </style>
 </head>
 <body>
@@ -273,6 +283,8 @@
   <div class="tbtn" id="btnZoomT">鏡</div>
 </div>
 <div id="joyBase"></div><div id="joyKnob"></div>
+
+<div id="scopeOv" class="hidden"><div class="ring"></div></div>
 
 <div id="flash"></div>
 <div id="ultcut"><div class="band"></div><div id="ulttext"></div><div id="ultsub"></div></div>
