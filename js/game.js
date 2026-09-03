@@ -191,6 +191,11 @@ function fillBots(){
 }
 
 /* ------------------------- 連線（PeerJS） ------------------------- */
+// 多組 STUN 提高 NAT 穿透成功率（PeerJS 預設僅一組）
+const PEER_OPTS = {debug:0, config:{iceServers:[
+  {urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302',
+         'stun:stun2.l.google.com:19302','stun:stun3.l.google.com:19302']},
+]}};
 function netFail(msg){
   $('netstat').classList.add('hidden');
   alert(msg + '\n\n將以單人模式（AI 補滿）繼續也可以：點「單人開戰」。');
@@ -207,7 +212,7 @@ function hostRoom(){
   slots = Array.from({length:TEAM_SIZE*2}, (_,i)=> mkSlot(i));
   myIdx = 0;
   const s = slots[0]; s.ctrl='local'; s.name=myName(); s.char=selChar;
-  peer = new Peer('wxgs-'+code, {debug:0});
+  peer = new Peer('wxgs-'+code, PEER_OPTS);
   let opened = false;
   setTimeout(()=>{ if(!opened && netMode==='host' && !started) netFail('建立房間逾時：無法連上 P2P 信令伺服器（可能被防火牆阻擋）。'); }, 12000);
   peer.on('open', ()=>{
@@ -216,21 +221,23 @@ function hostRoom(){
     showRoom(code, true);
   });
   peer.on('error', e=>{
-    if (String(e.type)==='unavailable-id'){ hostRoom(); return; }
+    if (String(e.type)==='unavailable-id'){ try{ peer.destroy(); }catch(_){} hostRoom(); return; }
     netFail('建立房間失敗（'+e.type+'）。可能是網路或防火牆阻擋 P2P。');
   });
   peer.on('connection', conn=>{
-    conn.on('open', ()=>{
-      if (started){ send(conn, {t:'busy'}); setTimeout(()=>conn.close(), 500); return; }
-      conn.on('data', d=> hostOnData(conn, d));
-      conn.on('close', ()=> hostDropPeer(conn));
-      conn.on('error', ()=> hostDropPeer(conn));
-    });
+    // data/close 需在連線建立當下就註冊：來賓的 hi 可能緊跟著 open 到達，
+    // 晚註冊會漏接（原 bug：房間顯示已連上卻看不到人）
+    conn.on('data', d=> hostOnData(conn, d));
+    conn.on('close', ()=> hostDropPeer(conn));
+    conn.on('error', ()=> hostDropPeer(conn));
   });
 }
 function hostOnData(conn, d){
   if (!d || typeof d !== 'object') return;
+  conn._last = now();   // 心跳：任何訊息都算活著
   if (d.t==='hi'){
+    if (started){ send(conn, {t:'busy'}); setTimeout(()=>{ try{ conn.close(); }catch(e){} }, 500); return; }
+    if (conn._idx !== undefined) return;   // 已入座的重複 hi 忽略
     // 指派到人數較少的隊
     const cnt = t=> slots.filter(s=>s.team===t && s.ctrl!=='empty').length;
     const team = cnt('red') <= cnt('blue') ? 'red' : 'blue';
@@ -295,7 +302,8 @@ function trySwap(idx){
 }
 let roomBots = true;   // 房主選項：人數不足時是否以 AI 補位（關閉適合 1v1 單挑）
 function roomBroadcast(){
-  const pack = slots.map(s=> ({i:s.idx, c:s.ctrl, n:s.name, ch:s.char, tm:s.team, bc:s.botChar}));
+  // 房主自己的槽位以 'net' 送出（'local' 只對本端有意義）
+  const pack = slots.map(s=> ({i:s.idx, c:s.ctrl==='local'?'net':s.ctrl, n:s.name, ch:s.char, tm:s.team, bc:s.botChar}));
   bcast({t:'room', slots:pack, bots:roomBots});
   renderRoom();
 }
@@ -305,7 +313,7 @@ function joinRoom(code){
   audio();
   $('netstat').classList.remove('hidden'); $('netstat').textContent = '連線至房間 '+code+'…';
   netMode='guest'; isHost=false;
-  peer = new Peer({debug:0});
+  peer = new Peer(PEER_OPTS);
   peer.on('error', e=> netFail('連線失敗（'+e.type+'）。請確認房號正確、房主在線。'));
   peer.on('open', ()=>{
     const conn = peer.connect('wxgs-'+code, {reliable:true});
@@ -344,7 +352,7 @@ function guestOnData(d){
     matchT = d.time;
     startMatch();
   }
-  else if (d.t==='st'){ applySnapshot(d); }
+  else if (d.t==='st'){ lastSnapT = now(); applySnapshot(d); }
   else if (d.t==='fire'){ remoteTracer(d.o, d.e, d.i); }
   else if (d.t==='ev'){ onGameEvent(d); }
   else if (d.t==='end'){ showEnd(d); }
@@ -3334,10 +3342,35 @@ function updateHUD(){
     if (bu){ bu.style.opacity = rdy ? 1 : .5;
       bu.style.boxShadow = rdy ? '0 0 16px rgba(232,121,249,.85)' : 'none'; }
   }
-  if (netMode!=='solo') $('netstat').textContent =
-    (netMode==='host'?'房主 · ':'') + '房間 '+roomCodeStr+' · '+slots.filter(x=>x.ctrl==='net').length+' 位連線玩家';
+  if (netMode!=='solo') $('netstat').textContent = netWarn ||
+    ((netMode==='host'?'房主 · ':'') + '房間 '+roomCodeStr+' · '+slots.filter(x=>x.ctrl==='net').length+' 位連線玩家');
 }
 let localSkillCd = 0; // guest 端的技能 CD 本地顯示
+let lastSnapT = 0;    // guest 端：最後收到快照的時間（斷線偵測）
+
+/* ---- 靜默斷線偵測（WebRTC 連線死掉時 close 事件可能遲遲不來） ---- */
+let netCheckT = 0, netWarn = '';
+function netWatchdog(dt){
+  if (netMode==='solo' || !started) return;
+  netCheckT -= dt;
+  if (netCheckT > 0) return;
+  netCheckT = 2;
+  const t = now();
+  if (netMode==='guest'){
+    if (!lastSnapT) return;
+    const gap = t - lastSnapT;
+    if (gap > 25){ endMatch('與房主的連線逾時 · 戰鬥中止'); }
+    else netWarn = gap > 6 ? '⚠ 連線不穩（'+Math.round(gap)+'s 未收到資料）' : '';
+  } else if (netMode==='host'){
+    for (const conn of [...conns]){
+      if (conn._idx === undefined || !conn._last) continue;
+      if (t - conn._last > 20){   // 20 秒無任何訊息：視為斷線，AI 接管
+        try{ conn.close(); }catch(e){}
+        hostDropPeer(conn);
+      }
+    }
+  }
+}
 function renderBoard(){
   const rows = slots.filter(s=>s.ctrl!=='empty').map(s=>({n:s.name,tm:s.team,ch:s.char,k:s.kills,d:s.deaths,sc:s.score}));
   $('boardBody').innerHTML = boardHTML(rows, scores.red, scores.blue);
@@ -3538,6 +3571,7 @@ function frame(){
   lastFrame = t;
 
   updateLocal(dt);
+  netWatchdog(dt);
   if (!isHost) localSkillCd = Math.max(0, localSkillCd-dt);
   if (isHost){
     hostTick(dt);
