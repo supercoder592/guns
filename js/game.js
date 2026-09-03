@@ -12,13 +12,16 @@ const TICK_STATE = 1 / 15;          // 快照頻率
 const TICK_INPUT = 1 / 20;          // 輸入上傳頻率
 
 const EL = {
-  metal:  { glyph:'金', name:'金行', color:0xe8c84a, css:'#e8c84a', fx:'穿甲必爆‧彈落碎刃區', beats:['wood'] },
+  metal:  { glyph:'金', name:'金行', color:0xe8c84a, css:'#e8c84a', fx:'穿甲必爆‧彈落碎刃區', beats:['wood','wind'] },
   wood:   { glyph:'木', name:'木行', color:0x4ade80, css:'#4ade80', fx:'命中吸血‧彈落荊棘叢', beats:['earth'] },
   water:  { glyph:'水', name:'水行', color:0x38bdf8, css:'#38bdf8', fx:'命中緩速‧彈落霜凍地', beats:['fire'] },
   fire:   { glyph:'火', name:'火行', color:0xff6b5e, css:'#ff6b5e', fx:'命中灼燒‧彈落生火海', beats:['metal','ice'] },
   earth:  { glyph:'土', name:'土行', color:0xc99a4e, css:'#c99a4e', fx:'命中震懾‧彈落隆岩牆', beats:['water','thunder'] },
   ice:    { glyph:'冰', name:'冰行', color:0xbfeaff, css:'#bfeaff', fx:'命中疊凍‧彈落冰封地', beats:['wood'] },
   thunder:{ glyph:'雷', name:'雷行', color:0xc084fc, css:'#c084fc', fx:'連鎖閃電‧彈落雷場',   beats:['water'] },
+  wind:   { glyph:'風', name:'風行', color:0x7ce8c4, css:'#7ce8c4', fx:'命中擊退‧彈落亂流域', beats:['dark'] },
+  dark:   { glyph:'暗', name:'暗行', color:0x8b5cf6, css:'#a78bfa', fx:'命中蝕明‧彈落暗幕域', beats:['light'] },
+  light:  { glyph:'光', name:'光行', color:0xfff3b8, css:'#fff3b8', fx:'光速彈道‧彈落聖域',   beats:['dark'] },
 };
 function elemMult(a, d){
   if (!a || !d) return 1;
@@ -34,6 +37,9 @@ const CHARS = [
   { el:'earth', name:'磐嶽‧不動', skill:'大地壁壘', skillCd:8,  ultName:'土行奧義・山崩地裂鎮乾坤', ultSub:'MOUNTAIN CRUSHES HEAVEN' },
   { el:'ice',   name:'霜牙‧凜冬', skill:'急凍領域', skillCd:11, ultName:'冰行奧義・千里冰封永凍劫', ultSub:'ABSOLUTE ZERO' },
   { el:'thunder',name:'紫電‧驚雷', skill:'落雷術',  skillCd:9,  ultName:'雷行奧義・九天玄雷滅世',   ultSub:'HEAVENLY THUNDER' },
+  { el:'wind',  name:'疾風‧無蹤', skill:'罡風衝擊', skillCd:10, ultName:'風行奧義・九霄龍捲滅世颶', ultSub:'TEMPEST OF HOWLING SKY' },
+  { el:'dark',  name:'影殤‧無明', skill:'暗影遁形', skillCd:14, ultName:'暗行奧義・永夜降臨滅明劫', ultSub:'ETERNAL NIGHT DESCENDS' },
+  { el:'light', name:'聖輝‧曦臨', skill:'曦光聖域', skillCd:12, ultName:'光行奧義・審判之曦淨世光', ultSub:'RADIANT JUDGEMENT' },
 ];
 const GUNS = [
   { name:'靈息手槍',   en:'P-DAO 9mm',  dmg:30,  hs:2.0, mag:15, reload:1.6, rpm:420, spread:0.010, auto:false, pellets:1, range:70 },
@@ -121,7 +127,7 @@ function mkSlot(i){
     hp:100, alive:true, respawnAt:0,
     pos:new THREE.Vector3(), ry:0, rx:0, moving:false, gun:2,
     kills:0, deaths:0, score:0, streak:0, ult:0,
-    fx:{burn:0,burnSrc:-1,slow:0,root:0,stun:0,shield:0,regen:0,haste:0,gat:0,frz:0,frzT:0},
+    fx:{burn:0,burnSrc:-1,slow:0,root:0,stun:0,shield:0,regen:0,haste:0,gat:0,frz:0,frzT:0,blind:0,stealth:0},
     skillCd:0,
     bot:null, avatar:null,
   };
@@ -134,19 +140,26 @@ let started = false, matchT = MATCH_MINUTES*60, scores = {red:0, blue:0};
 
 /* ------------------------- 大廳 UI ------------------------- */
 let selChar = 2;
-const charRow = $('charRow');
-CHARS.forEach((c,i)=>{
-  const e = EL[c.el];
-  const b = document.createElement('div');
-  b.className = 'cbtn'+(i===selChar?' sel':''); b.style.color = e.css;
-  b.innerHTML = `<div class="g">${e.glyph}</div><div class="n">${c.name.split('‧')[0]}</div>`;
-  b.onclick = ()=>{ selChar = i;
-    document.querySelectorAll('.cbtn').forEach((x,j)=> x.classList.toggle('sel', j===i));
-    if (netMode==='guest' && conns[0]) send(conns[0], {t:'char', c:i});
-    if (netMode==='host'){ slots[myIdx].char = i; roomBroadcast(); }
-  };
-  charRow.appendChild(b);
-});
+function pickChar(i){
+  selChar = i;
+  document.querySelectorAll('.cbtn').forEach(x=> x.classList.toggle('sel', +x.dataset.ci===i));
+  if (netMode==='guest' && conns[0]) send(conns[0], {t:'char', c:i});   // 房間中即時換屬性
+  if (netMode==='host'){ slots[myIdx].char = i; roomBroadcast(); }
+}
+function buildCharRow(container){
+  if (!container) return;
+  CHARS.forEach((c,i)=>{
+    const e = EL[c.el];
+    const b = document.createElement('div');
+    b.className = 'cbtn'+(i===selChar?' sel':''); b.style.color = e.css;
+    b.dataset.ci = i;
+    b.innerHTML = `<div class="g">${e.glyph}</div><div class="n">${c.name.split('‧')[0]}</div>`;
+    b.onclick = ()=> pickChar(i);
+    container.appendChild(b);
+  });
+}
+buildCharRow($('charRow'));
+buildCharRow($('charRowRoom'));   // 房間內也能換屬性（同大廳選單）
 $('nameIpt').value = localStorage.getItem('wx_name') || '';
 function myName(){
   const v = $('nameIpt').value.trim() || ('玩家'+Math.floor(Math.random()*900+100));
@@ -330,7 +343,8 @@ function showRoom(code, host){
   $('roomCode').onclick = ()=>{ try{ navigator.clipboard.writeText(code); $('roomCode').style.color='#4ade80';
     setTimeout(()=>$('roomCode').style.color='', 600); }catch(e){} };
   $('btnStart').classList.toggle('hidden', !host);
-  $('roomHint').textContent = host ? '把房號告訴隊友；按「開始作戰」空位將由 AI 士兵補齊。' : '等待房主開始作戰…';
+  $('roomHint').textContent = host ? '把房號告訴隊友；等待期間可隨時更換屬性；按「開始作戰」空位將由 AI 士兵補齊。'
+                                   : '等待房主開始作戰…（等待期間可隨時更換屬性）';
   $('btnStart').onclick = ()=>{
     fillBots();
     const pack = slots.map(s=> ({i:s.idx, c:s.ctrl==='local'?'net':s.ctrl, n:s.name, ch:s.char, tm:s.team, g:s.gun}));
@@ -351,10 +365,11 @@ function renderRoom(){
       const d = document.createElement('div');
       if (s.ctrl==='empty'){ d.className='slot empty'; d.textContent='（空位 — 開戰時由 AI 補齊）'; }
       else {
-        d.className='slot';
+        d.className = 'slot'+(s.idx===myIdx?' mine':'');
         const e = EL[CHARS[s.char].el];
         const tag = s.idx===myIdx?'你':(s.ctrl==='bot'?'AI':(s.idx===0?'房主':'玩家'));
-        d.innerHTML = `<span class="cg" style="color:${e.css}">${e.glyph}</span><span>${s.name}</span><span class="tag">${tag}</span>`;
+        d.innerHTML = `<span class="cg" style="color:${e.css}">${e.glyph}</span><span>${s.name}</span>`+
+          `<span class="en" style="color:${e.css}">${e.name}</span><span class="tag">${tag}</span>`;
       }
       box.appendChild(d);
     }
@@ -1127,7 +1142,7 @@ function tryFire(){
     }
     const muzzle = camera.localToWorld(new THREE.Vector3(0.18, -0.16, -0.7));
     spawnBolt(muzzle, end, myEl);
-    if (myEl==='metal' || gat) tracer(muzzle, end, gat?0xffe9a0:elColor);   // 飛刃/殲滅砲掠光
+    if (myEl==='metal' || myEl==='light' || gat) tracer(muzzle, end, gat?0xffe9a0:elColor);   // 飛刃/光矢/殲滅砲掠光
     netFire(origin, end);
   }
   if (!gat && me.ammo===0) startReload();
@@ -1157,6 +1172,15 @@ function impactElem(point, dir, el, isRock){
     sparkBurst(point, 0xd8b4ff, 12, 5);
     const o = point.clone().add(new THREE.Vector3(rand(-1,1), rand(.2,1), rand(-1,1)));
     arcLine(point.clone(), o, .3, 0xd8b4ff);
+  } else if (el==='wind'){
+    sparkBurst(point, 0xbdf5e0, 8, 4);
+    spawnSmoke(point.x, point.y, point.z, {n:2, size:.5, color:0xe4fff5, rise:.4, life:.5, grow:1.1, opacity:.4, spread:.12});
+  } else if (el==='dark'){
+    sparkBurst(point, 0x8b5cf6, 8, 3.5);
+    spawnSmoke(point.x, point.y, point.z, {n:3, size:.6, color:0x150a26, rise:.5, life:.9, grow:.8, opacity:.8, spread:.12});
+  } else if (el==='light'){
+    sparkBurst(point, 0xfff8d8, 14, 5.5);
+    spawnSmoke(point.x, point.y, point.z, {n:1, size:.7, color:0xfff3b8, add:true, rise:.3, life:.25, grow:1.4, opacity:.8, spread:.05});
   } else {
     sparkBurst(point, 0xd8c090, 6, 3);
     spawnSmoke(point.x, point.y, point.z, {n:2, size:.6, color:0xa08b62, rise:.6, life:.9, grow:.7, opacity:.5, spread:.15});
@@ -1209,7 +1233,7 @@ function remoteTracer(o, e, idx){
   const el = s ? CHARS[s.char].el : 'metal';
   const from = new THREE.Vector3(o[0],o[1],o[2]), to = new THREE.Vector3(e[0],e[1],e[2]);
   spawnBolt(from, to, el);
-  if (el==='metal') tracer(from, to, EL[el].color);
+  if (el==='metal' || el==='light') tracer(from, to, EL[el].color);
   sparkBurst(from, 0xffd9a0, 3, 1.2);   // 遠端槍口火光
   const d = camera.position.distanceTo(from);
   if (d < 60) sfx('shot', clamp(1-d/60, .05, .6));
@@ -1399,6 +1423,20 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
   }
   if (aEl==='fire' && vic.fx.frz > 0){ vic.fx.frz = 0; dmg += 15;  // 火融冰 → 蒸汽
     const vp = vic.idx===myIdx ? me.pos : vic.pos; hostSteam(vp.x, vp.z); }
+  if (aEl==='wind'){                                         // 風：擊退
+    const vp = vic.idx===myIdx ? me.pos : vic.pos;
+    const ap = att.idx===myIdx ? me.pos : att.pos;
+    const a = Math.atan2(vp.z-ap.z, vp.x-ap.x);
+    if (vic.ctrl==='bot'){
+      vic.pos.x = clamp(vic.pos.x + Math.cos(a)*1.0, -57, 57);
+      vic.pos.z = clamp(vic.pos.z + Math.sin(a)*1.0, -57, 57);
+    } else {
+      const pe = {t:'ev', k:'push', i:vic.idx, x:+(Math.cos(a)*6).toFixed(1), z:+(Math.sin(a)*6).toFixed(1), y:1.5};
+      bcast(pe); onGameEvent(pe);
+    }
+  }
+  if (aEl==='dark'){ vic.fx.blind = Math.max(vic.fx.blind, 1.3); }   // 暗：蝕明（視野遭黑幕吞噬）
+  if (aEl==='light' && vic.fx.blind > 0){ vic.fx.blind = 0; dmg += 12; } // 光：淨化暗蝕 → 聖光爆發
   if (aEl==='thunder'){                                      // 雷：連鎖閃電
     const vp = vic.idx===myIdx ? me.pos : vic.pos;
     const wet = vic.fx.slow > 0;                              // 潮濕/受寒 → 超導
@@ -1473,6 +1511,9 @@ function hostGroundHit(idx, x, y, z){
   else if (el==='metal'){ hostAddZone('shrapnel', x, z, 1.7, 5, idx); }
   else if (el==='ice'){ hostAddZone('ice', x, z, 2.0, 5, idx); }
   else if (el==='thunder'){ hostAddZone('shock', x, z, 1.8, 4.5, idx); }
+  else if (el==='wind'){ hostAddZone('gale', x, z, 2.2, 4.5, idx); }
+  else if (el==='dark'){ hostAddZone('gloom', x, z, 2.2, 5, idx); }
+  else if (el==='light'){ hostAddZone('sanct', x, z, 2.0, 5, idx); }
   else if (el==='earth'){
     if (y > 1.6) return;                       // 打太高不隆起
     for (const o of slots){                    // 避免把人直接卡進石頭
@@ -1599,6 +1640,27 @@ function hostUseSkill(idx, d){
     }
     hostAddZone('shock', lx, lz, 2.5, 3, idx);
   }
+  else if (el==='wind'){
+    // 罡風衝擊：吹飛周圍敵人並自身加速
+    s.fx.haste = 2;
+    for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team!==s.team){
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      const dx = op.x-d.p[0], dz = op.z-d.p[2], dl = Math.hypot(dx,dz)||1;
+      if (dl < 9){
+        hostDamage(o, 15*elemMult('wind', CHARS[o.char].el), s, false, '罡風');
+        if (o.ctrl==='bot'){
+          o.pos.x = clamp(o.pos.x + dx/dl*3, -57, 57);
+          o.pos.z = clamp(o.pos.z + dz/dl*3, -57, 57);
+          o.fx.stun = Math.max(o.fx.stun, .35);
+        } else {
+          const pe = {t:'ev', k:'push', i:o.idx, x:+(dx/dl*11).toFixed(1), z:+(dz/dl*11).toFixed(1), y:3.5};
+          bcast(pe); onGameEvent(pe);
+        }
+      }
+    }
+  }
+  else if (el==='dark'){ s.fx.stealth = 3.5; }   // 暗影遁形：短暫匿蹤（敵人與 AI 皆不可見）
+  else if (el==='light'){ hostAddZone('sanct', d.p[0], d.p[2], 5, 6, idx); }  // 曦光聖域：治療我方
   bcast(ev); onGameEvent(ev);
 }
 function localUlt(){
@@ -1660,6 +1722,45 @@ function hostUseUlt(idx){
     strike();
     setTimeout(strike, 800);
     setTimeout(strike, 1600);
+  } else if (el==='wind'){
+    // 九霄龍捲：全場敵人被捲向風眼、擊飛暈眩，留下巨型亂流域
+    for (const o of foes){
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      const dx = s.pos.x-op.x, dz = s.pos.z-op.z, dl = Math.hypot(dx,dz)||1;
+      if (dl > 32) continue;
+      hostDamage(o, 55*elemMult('wind',CHARS[o.char].el), s, false, '龍捲風暴');
+      o.fx.stun = Math.max(o.fx.stun, 1.3);
+      if (o.ctrl==='bot'){
+        const pull = Math.min(dl-2, 6);
+        if (pull > 0){
+          o.pos.x = clamp(o.pos.x + dx/dl*pull, -57, 57);
+          o.pos.z = clamp(o.pos.z + dz/dl*pull, -57, 57);
+        }
+      } else {
+        const pe = {t:'ev', k:'push', i:o.idx, x:+(dx/dl*10).toFixed(1), z:+(dz/dl*10).toFixed(1), y:6};
+        bcast(pe); onGameEvent(pe);
+      }
+    }
+    hostAddZone('gale', s.pos.x, s.pos.z, 7, 6, idx);
+  } else if (el==='dark'){
+    // 永夜降臨：全場敵人陷入黑暗、自身長匿蹤，敵人腳下生暗幕
+    s.fx.stealth = 5;
+    for (const o of foes){
+      hostDamage(o, 45*elemMult('dark',CHARS[o.char].el), s, false, '永夜');
+      o.fx.blind = Math.max(o.fx.blind, 4);
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      hostAddZone('gloom', op.x, op.z, 3, 6, idx);
+    }
+  } else if (el==='light'){
+    // 審判之曦：全隊滿療＋再生，敵人受聖光審判並致盲
+    for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team===s.team){
+      hostHeal(o, 100); o.fx.regen = Math.max(o.fx.regen, 4); o.fx.blind = 0;
+    }
+    for (const o of foes){
+      hostDamage(o, 55*elemMult('light',CHARS[o.char].el), s, false, '審判之曦');
+      o.fx.blind = Math.max(o.fx.blind, 2.2);
+    }
+    hostAddZone('sanct', s.pos.x, s.pos.z, 6, 7, idx);
   }
   bcast(ev); onGameEvent(ev);
 }
@@ -1708,6 +1809,19 @@ function onGameEvent(d){
     }
     if (d.el==='thunder' && d.lx !== undefined) lightningFX(d.lx, d.lz);   // 落雷
     if (d.el==='fire'){ /* 衝刺者本地處理 */ }
+    if (d.el==='wind'){
+      waveRing(d.p[0], d.p[2], 0xbdf5e0, 11, .7, 2.4);
+      spawnSmoke(d.p[0], .6, d.p[2], {n:8, size:.9, color:0xe0fff4, rise:1.8, life:.7, grow:1, opacity:.4, spread:1.2});
+    }
+    if (d.el==='dark'){   // 遁形黑霧
+      spawnSmoke(d.p[0], .8, d.p[2], {n:10, size:1.3, color:0x120823, rise:.9, life:1.3, grow:1, opacity:.8, spread:.7});
+      sparkBurst(new THREE.Vector3(d.p[0], 1.2, d.p[2]), 0x8b5cf6, 10, 3);
+      if (d.i===myIdx) centerMsg('遁 入 暗 影');
+    }
+    if (d.el==='light'){
+      ringFX(new THREE.Vector3(d.p[0], .15, d.p[2]), 0xffe98a, 10);
+      lightPillarFX(d.p[0], d.p[2], .8);
+    }
   }
   else if (d.k==='ult'){
     const s = slots[d.i], c = CHARS[s.char], e = EL[c.el];
@@ -1740,6 +1854,24 @@ function onGameEvent(d){
       for (const [x,z] of d.targets) setTimeout(()=> meteorFX(x,z), rand(400,900));
     }
     if (c.el==='metal'){ bladeOrbit(d.i, 6); }               // 環體飛劍演出
+    if (c.el==='wind'){
+      shakeCam(.35);
+      waveRing(d.p[0], d.p[2], 0x9ff5dc, 40, 1.8, 4);
+      waveRing(d.p[0], d.p[2], 0xe0fff4, 40, 2.4, 2);
+      windVortexFX(d.p[0], d.p[2]);
+    }
+    if (c.el==='dark'){
+      darkNovaFX(d.p[0], d.p[2]);
+      spawnSmoke(d.p[0], .8, d.p[2], {n:14, size:2.4, color:0x0b0614, rise:1.4, life:2.4, grow:1.6, opacity:.85, spread:4});
+    }
+    if (c.el==='light'){
+      const f = $('flash');
+      f.style.transition='none'; f.style.opacity = .95;
+      setTimeout(()=>{ f.style.transition='opacity 1.1s'; f.style.opacity=0; }, 80);
+      waveRing(d.p[0], d.p[2], 0xffe98a, 48, 2, 4);
+      lightPillarFX(d.p[0], d.p[2], 2.2);
+      sparkBurst(new THREE.Vector3(d.p[0], 1.6, d.p[2]), 0xfff8d8, 24, 7);
+    }
     if (c.el==='ice'){
       waveRing(d.p[0], d.p[2], 0xbfeaff, 50, 2, 3.5);
       spikeBurst(d.p[0], d.p[2], 0xd8f2ff, 24, 4, 26, 2.8);  // 全場冰晶
@@ -1756,6 +1888,11 @@ function onGameEvent(d){
   else if (d.k==='boltset'){ for (const [x,z] of d.pts) setTimeout(()=> lightningFX(x, z), rand(0,250)); }
   else if (d.k==='zoneend'){ const v=zoneVis.get(d.id); if(v){ v.until = 0; } }
   else if (d.k==='steam'){ steamFX(d.x, d.z); }
+  else if (d.k==='push'){   // 風系擊退 / 龍捲牽引：本地玩家承受衝量
+    if (d.i===myIdx && !me.dead){
+      me.vel.x += d.x; me.vel.z += d.z; if (d.y) me.vel.y += d.y;
+    }
+  }
   else if (d.k==='boomfx'){ explosionFX(d.x, d.y, d.z, .7); }
   else if (d.k==='barrel'){
     const b = barrels.get(d.id);
@@ -1948,7 +2085,7 @@ function sparkBurst(p, color, n=8, spd=3){
 /* ---------- 元素投射物：射出元素本身（火球/種子/水彈/飛刃/岩石） ---------- */
 const bolts = [];
 const MAX_BOLTS = 60;
-const BOLT_SPEED = { metal:200, wood:140, water:150, fire:115, earth:135, ice:160, thunder:230 };
+const BOLT_SPEED = { metal:200, wood:140, water:150, fire:115, earth:135, ice:160, thunder:230, wind:180, dark:150, light:330 };
 function spawnBolt(from, to, el){
   if (bolts.length >= MAX_BOLTS){ const old = bolts.shift(); scene.remove(old.group); }
   const group = new THREE.Group();
@@ -1998,6 +2135,25 @@ function spawnBolt(from, to, el){
     group.add(m);
     addGlow(0xd8b4ff, .4);
     addGlow(0xffffff, .16);
+  } else if (el==='wind'){   // 風刃：高速自旋的氣旋環
+    const m = new THREE.Mesh(new THREE.TorusGeometry(.11,.022,6,14),
+      new THREE.MeshStandardMaterial({color:0xeafff6, emissive:0x7ce8c4, emissiveIntensity:.9,
+        transparent:true, opacity:.75, roughness:.2}));
+    group.add(m); spinObj = m; spin.set(0,0,34);
+    addGlow(0xbdf5e0, .26);
+  } else if (el==='dark'){   // 暗蝕彈：吞光黑核裹紫焰
+    const core = new THREE.Mesh(new THREE.SphereGeometry(.085,8,6),
+      new THREE.MeshBasicMaterial({color:0x0b0614}));
+    group.add(core); spinObj = core; spin.set(6,9,6);
+    addGlow(0x8b5cf6, .42);
+    addGlow(0x2a1650, .6);
+  } else if (el==='light'){  // 聖光矢：近光速的白金射線
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.06,8,6),
+      new THREE.MeshStandardMaterial({color:0xffffff, emissive:0xfff3b8, emissiveIntensity:1.8}));
+    m.scale.set(1,1,4.2);
+    group.add(m);
+    addGlow(0xfff8d8, .45);
+    addGlow(0xffffff, .2);
   } else {                    // 岩彈：翻滾的碎岩
     const m = new THREE.Mesh(new THREE.DodecahedronGeometry(.115),
       new THREE.MeshStandardMaterial({map:TEX.rock, roughness:.95}));
@@ -2031,6 +2187,13 @@ function boltTrail(b){
     }
   } else if (b.el==='wood'){
     spawnSmoke(p.x, p.y, p.z, {n:1, size:.2, color:0x7dfa9e, add:true, rise:.15, life:.28, grow:-.3, opacity:.6, spread:.05});
+  } else if (b.el==='wind'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.28, color:0xd8fff0, rise:0, life:.3, grow:.5, opacity:.35, spread:.06});
+  } else if (b.el==='dark'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.3, color:0x150a26, rise:.1, life:.5, grow:.6, opacity:.75, spread:.05});
+    if (Math.random()<.25) spawnSmoke(p.x, p.y, p.z, {n:1, size:.14, color:0x8b5cf6, add:true, rise:0, life:.2, grow:-.3, opacity:.8, spread:.04});
+  } else if (b.el==='light'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.22, color:0xfff8d8, add:true, rise:0, life:.13, grow:-.6, opacity:.95, spread:.02});
   } else {
     spawnSmoke(p.x, p.y, p.z, {n:1, size:.24, color:0xb59a6a, rise:.1, life:.4, grow:.5, opacity:.35, spread:.04});
   }
@@ -2149,6 +2312,65 @@ function bladeOrbit(idx, dur=6){ // 金大招：環體飛劍（純視覺，傷�
   }, ()=> scene.remove(group));
 }
 
+function windVortexFX(x, z){ // 風大招：旋捲上升的龍捲氣旋
+  const group = new THREE.Group();
+  const streaks = [];
+  const mat = new THREE.MeshBasicMaterial({color:0xd8fff0, transparent:true, opacity:.55,
+    blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide});
+  for (let i=0;i<16;i++){
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(rand(1.2,2.4), rand(.12,.3)), mat);
+    m.userData = {a:Math.random()*Math.PI*2, r:rand(1,5), h:rand(.3,7), w:rand(2.5,4.5)};
+    group.add(m); streaks.push(m);
+  }
+  group.position.set(x, 0, z);
+  scene.add(group);
+  addSpecial(3.2, (dt,k)=>{
+    const fade = k>.75 ? 1-(k-.75)/.25 : 1;
+    mat.opacity = .55*fade;
+    for (const m of streaks){
+      const u = m.userData;
+      u.a += u.w*dt; u.h += 2.2*dt; if (u.h > 9) u.h -= 9;
+      const r = u.r * (0.35 + u.h/9);
+      m.position.set(Math.cos(u.a)*r, u.h, Math.sin(u.a)*r);
+      m.rotation.y = -u.a;
+    }
+    if (Math.random()<.5) spawnSmoke(x+rand(-2,2), rand(0,1), z+rand(-2,2),
+      {n:1, size:1, color:0xe4fff5, rise:3, life:.8, grow:.9, opacity:.35, spread:.3});
+  }, ()=> scene.remove(group));
+  sfx('steam', 1);
+}
+function darkNovaFX(x, z){ // 暗大招：吞噬光明的黑暗新星
+  const mat = new THREE.MeshBasicMaterial({color:0x07030e, transparent:true, opacity:.75, depthWrite:false});
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 14), mat);
+  dome.position.set(x, .5, z);
+  scene.add(dome);
+  addSpecial(1.6, (dt,k)=>{
+    const r = 1 + 26*k;
+    dome.scale.setScalar(r);
+    mat.opacity = .75*(1-k);
+    if (Math.random()<.5){
+      const a = Math.random()*Math.PI*2, rr = r*.9;
+      const p1 = new THREE.Vector3(x+Math.cos(a)*rr, rand(.2,2.5), z+Math.sin(a)*rr);
+      arcLine(p1, p1.clone().add(new THREE.Vector3(rand(-1.5,1.5), rand(-.5,1.5), rand(-1.5,1.5))), .5, 0x8b5cf6);
+    }
+  }, ()=> scene.remove(dome));
+  shakeCam(.35); sfx('boom', .7);
+}
+function lightPillarFX(x, z, scale=1){ // 光柱天降
+  const mat = new THREE.MeshBasicMaterial({color:0xfff6cf, transparent:true, opacity:.8,
+    blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide});
+  const pil = new THREE.Mesh(new THREE.CylinderGeometry(1.1*scale, 1.5*scale, 30, 20, 1, true), mat);
+  pil.position.set(x, 15, z);
+  scene.add(pil);
+  const L = new THREE.PointLight(0xffe9a0, 40*scale, 18*scale, 1.6);
+  L.position.set(x, 2, z); scene.add(L);
+  addSpecial(1.2, (dt,k)=>{
+    mat.opacity = .8*(1-k);
+    pil.scale.x = pil.scale.z = 1+k*.6;
+    L.intensity = 40*scale*(1-k);
+  }, ()=>{ scene.remove(pil); scene.remove(L); });
+}
+
 /* ---------- 爆炸 / 蒸汽 ---------- */
 function explosionFX(x, y, z, scale=1){
   addDecal(new THREE.Vector3(x, .02, z), new THREE.Vector3(0,1,0), 1.7*scale, 18, 0x0d0c0a, .85); // 地面燒痕
@@ -2243,12 +2465,39 @@ function hostAddZone(kind, x, z, r, dur, src){
       if ((wx-x)**2+(wz-z)**2 < (r+2)**2) hostAddZoneRaw('mud', wx, wz, 3.2, 9, src);
     }
   }
+  if (kind==='gale'){
+    for (const [id,zn] of [...hzones]){
+      const d2 = (zn.x-x)**2 + (zn.z-z)**2;
+      if (d2 >= (zn.r+r)**2) continue;
+      if (zn.kind==='fire'){ hostAddZoneRaw('fire', x, z, r, 4, src); return; }        // 風助火勢：火場向亂流處蔓延
+      if (zn.kind==='gloom'){ hostEndZone(id); }                                       // 罡風吹散暗幕
+      if (zn.kind==='frost' || zn.kind==='ice'){ hostAddZoneRaw('frost', x, z, r+1.5, dur+1.5, src); return; } // 風雪成暴
+    }
+  }
+  if (kind==='gloom'){
+    for (const [id,zn] of [...hzones]) if (zn.kind==='sanct'){
+      const d2 = (zn.x-x)**2 + (zn.z-z)**2;
+      if (d2 < (zn.r+r)**2){ hostEndZone(id); return; }        // 光暗相剋：互相湮滅
+    }
+  }
+  if (kind==='sanct'){
+    for (const [id,zn] of [...hzones]) if (zn.kind==='gloom'){
+      const d2 = (zn.x-x)**2 + (zn.z-z)**2;
+      if (d2 < (zn.r+r)**2){ hostEndZone(id); return; }        // 光暗相剋：互相湮滅
+    }
+  }
   hostAddZoneRaw(kind, x, z, r, dur, src);
 }
 function hostAddZoneRaw(kind, x, z, r, dur, src){
   if (hzones.size >= 36) hostEndZone(hzones.keys().next().value);  // 區域總量上限
   const id = ++zoneSeq;
   hzones.set(id, {kind, x, z, r, until:now()+dur, src});
+  if (kind==='gloom'){   // 暗幕遮蔽 AI 視線（同蒸汽）
+    const blocker = new THREE.Mesh(new THREE.SphereGeometry(Math.max(r,1.6), 8, 6));
+    blocker.position.set(x, 1.4, z); blocker.visible = false;
+    scene.add(blocker);
+    smokeBlockers.push({mesh:blocker, until:now()+dur});
+  }
   const ev = {t:'ev', k:'zone', id, kind, x:+x.toFixed(1), z:+z.toFixed(1), r, dur};
   bcast(ev); onGameEvent(ev);
 }
@@ -2340,6 +2589,40 @@ function spawnZoneVis(id, kind, x, z, r, dur){
       new THREE.MeshBasicMaterial({color:0x8a5fd0, transparent:true, opacity:.18, depthWrite:false}));
     disc.rotation.x = -Math.PI/2; disc.position.set(x, .04, z);
     group.add(disc);
+  } else if (kind==='gale'){
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r*.75, r, 36),
+      new THREE.MeshBasicMaterial({color:0x9ff5dc, transparent:true, opacity:.4, side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending, depthWrite:false}));
+    ring.rotation.x = -Math.PI/2; ring.position.set(x, .07, z);
+    group.add(ring);
+    const ring2 = new THREE.Mesh(new THREE.RingGeometry(r*.35, r*.5, 30),
+      new THREE.MeshBasicMaterial({color:0xd8fff0, transparent:true, opacity:.3, side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending, depthWrite:false}));
+    ring2.rotation.x = -Math.PI/2; ring2.position.set(x, .5, z);
+    group.add(ring2);
+    group.userData.spinRings = [ring, ring2];
+  } else if (kind==='gloom'){
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
+      new THREE.MeshBasicMaterial({color:0x0b0614, transparent:true, opacity:.88, depthWrite:false}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .05, z);
+    group.add(disc);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r*.85, r, 32),
+      new THREE.MeshBasicMaterial({color:0x8b5cf6, transparent:true, opacity:.45, side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending, depthWrite:false}));
+    ring.rotation.x = -Math.PI/2; ring.position.set(x, .08, z);
+    group.add(ring);
+  } else if (kind==='sanct'){
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 30),
+      new THREE.MeshBasicMaterial({color:0xfff3b8, transparent:true, opacity:.22, blending:THREE.AdditiveBlending, depthWrite:false}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .05, z);
+    group.add(disc);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r*.88, r, 36),
+      new THREE.MeshBasicMaterial({color:0xffe98a, transparent:true, opacity:.6, side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending, depthWrite:false}));
+    ring.rotation.x = -Math.PI/2; ring.position.set(x, .08, z);
+    group.add(ring);
+    const L = new THREE.PointLight(0xffe9a0, 10, r*4, 1.8);
+    L.position.set(x, 1.5, z); group.add(L);
   } else if (kind==='shrapnel'){
     const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
       new THREE.MeshBasicMaterial({color:0x8a7a3a, transparent:true, opacity:.25, depthWrite:false}));
@@ -2379,6 +2662,21 @@ function zoneVisTick(){
     }
     if (v.kind==='bramble' && Math.random()<.04)
       sparkBurst(new THREE.Vector3(v.x+rand(-v.r,v.r), .5, v.z+rand(-v.r,v.r)), 0x7dfa9e, 2, 1);
+    if (v.kind==='gale'){
+      const sr = v.group.userData.spinRings;
+      if (sr){ sr[0].rotation.z += .12; sr[1].rotation.z -= .2; }
+      if (Math.random()<.3){   // 環繞氣旋的風縷
+        const a = t*4 + rand(0,6.3);
+        spawnSmoke(v.x+Math.cos(a)*v.r*.7, rand(.2,1.2), v.z+Math.sin(a)*v.r*.7,
+          {n:1, size:.5, color:0xe0fff4, rise:1.6, life:.6, grow:.6, opacity:.35, spread:.06});
+      }
+    }
+    if (v.kind==='gloom' && Math.random()<.25)   // 黑霧升騰
+      spawnSmoke(v.x+rand(-v.r*.6,v.r*.6), .3, v.z+rand(-v.r*.6,v.r*.6),
+        {n:1, size:1, color:0x120823, rise:.8, life:1.6, grow:.8, opacity:.75, spread:.2});
+    if (v.kind==='sanct' && Math.random()<.2)    // 金色光塵飄升
+      spawnSmoke(v.x+rand(-v.r*.7,v.r*.7), .2, v.z+rand(-v.r*.7,v.r*.7),
+        {n:1, size:.14, color:0xffe9a0, add:true, rise:1.6, life:1.1, grow:-.05, opacity:.95, spread:.05});
   }
 }
 
@@ -2426,10 +2724,12 @@ function botThink(s, dt){
   let target=null, td=1e9;
   for (const o of slots){
     if (o.ctrl==='empty' || !o.alive || o.team===s.team) continue;
+    if (o.fx.stealth>0) continue;   // 暗影遁形：AI 找不到匿蹤者
     const d = o.pos.distanceTo(s.pos);
     if (d<td){ td=d; target=o; }
   }
   let seeTarget = false;
+  if (fx.blind>0 && s.fx.gat<=0) target = null;   // 蝕明：AI 暫時失明
   if (target && td < 55){
     tmpV.set(s.pos.x, s.pos.y+1.55, s.pos.z);
     tmpV2.set(target.pos.x, target.pos.y+1.3, target.pos.z).sub(tmpV);
@@ -2538,7 +2838,7 @@ function hostTick(dt){
     if (s.ctrl==='empty') continue;
     // 狀態效果
     const fx = s.fx;
-    for (const k of ['slow','root','stun','shield','regen','haste','gat']) if (fx[k]>0) fx[k]-=dt;
+    for (const k of ['slow','root','stun','shield','regen','haste','gat','blind','stealth']) if (fx[k]>0) fx[k]-=dt;
     if (fx.frzT>0){ fx.frzT-=dt; if (fx.frzT<=0) fx.frz = 0; }   // 凍層衰減
     if (fx.burn>0){
       fx.burn-=dt;
@@ -2566,9 +2866,13 @@ function hostTick(dt){
     for (const o of slots){
       if (o.ctrl==='empty' || !o.alive) continue;
       const src = slots[zn.src];
-      if (src && o.team === src.team) continue;   // 只影響施放者的敵隊
       const p = o.idx===myIdx ? me.pos : o.pos;
       if ((p.x-zn.x)**2 + (p.z-zn.z)**2 > zn.r*zn.r) continue;
+      if (zn.kind==='sanct'){   // 聖域：治療施放者的隊伍並淨化蝕明
+        if (src && o.team===src.team){ hostHeal(o, 10*dt); o.fx.blind = 0; }
+        continue;
+      }
+      if (src && o.team === src.team) continue;   // 其餘區域只影響施放者的敵隊
       if (zn.kind==='fire'){ o.fx.burn = Math.max(o.fx.burn, .8); o.fx.burnSrc = zn.src; }
       else if (zn.kind==='frost'){ o.fx.slow = Math.max(o.fx.slow, .5); }
       else if (zn.kind==='mud'){ o.fx.slow = Math.max(o.fx.slow, .5); }
@@ -2577,6 +2881,17 @@ function hostTick(dt){
       else if (zn.kind==='ice'){ o.fx.slow = Math.max(o.fx.slow, .7); hostDamage(o, 3*dt, slots[zn.src], false, '冰封'); }
       else if (zn.kind==='shock'){ hostDamage(o, 10*dt, slots[zn.src], false, '雷場');
         if (Math.random() < dt*0.7) o.fx.stun = Math.max(o.fx.stun, 0.3); }
+      else if (zn.kind==='gale'){   // 亂流：把敵人往外推、干擾行動
+        o.fx.slow = Math.max(o.fx.slow, .4);
+        const dx = p.x-zn.x, dz = p.z-zn.z, dl = Math.hypot(dx,dz)||1;
+        if (o.ctrl==='bot'){
+          o.pos.x = clamp(o.pos.x + dx/dl*2.4*dt, -57, 57);
+          o.pos.z = clamp(o.pos.z + dz/dl*2.4*dt, -57, 57);
+        } else if (o.idx===myIdx && !me.dead){
+          me.vel.x += dx/dl*9*dt; me.vel.z += dz/dl*9*dt;
+        }
+      }
+      else if (zn.kind==='gloom'){ o.fx.blind = Math.max(o.fx.blind, .5); }
     }
   }
   // 蒸汽視線遮蔽到期
@@ -2592,7 +2907,7 @@ function snapshotTick(){
     +s.pos.x.toFixed(2), +s.pos.y.toFixed(2), +s.pos.z.toFixed(2),
     +s.ry.toFixed(3), +s.rx.toFixed(3),
     Math.round(s.hp), s.alive?1:0, s.gun, s.moving?1:0,
-    (s.fx.burn>0?1:0)|(s.fx.slow>0?2:0)|(s.fx.root>0?4:0)|(s.fx.stun>0?8:0)|(s.fx.shield>0?16:0)|(s.fx.haste>0?32:0)|(s.fx.gat>0?64:0),
+    (s.fx.burn>0?1:0)|(s.fx.slow>0?2:0)|(s.fx.root>0?4:0)|(s.fx.stun>0?8:0)|(s.fx.shield>0?16:0)|(s.fx.haste>0?32:0)|(s.fx.gat>0?64:0)|(s.fx.blind>0?128:0)|(s.fx.stealth>0?256:0),
     Math.round(s.ult),
   ]);
   bcast({t:'st', time:Math.round(matchT), r:scores.red, b:scores.blue, pl});
@@ -2607,6 +2922,7 @@ function applySnapshot(d){
     const fb = p[9];
     s.fx.burn = fb&1?1:0; s.fx.slow = fb&2?1:0; s.fx.root = fb&4?1:0;
     s.fx.stun = fb&8?1:0; s.fx.shield = fb&16?1:0; s.fx.haste = fb&32?1:0; s.fx.gat = fb&64?1:0;
+    s.fx.blind = fb&128?1:0; s.fx.stealth = fb&256?1:0;
     if (i === myIdx){
       if (s.alive && p[5] < s._lastHp) hurtFeedback();
       s._lastHp = p[5];
@@ -2772,6 +3088,9 @@ function updateHUD(){
   const cd = isHost ? s.skillCd : localSkillCd;
   cs.textContent = 'E · '+CHARS[s.char].skill + (cd>0 ? ` ${cd.toFixed(1)}s` : '');
   cs.classList.toggle('ready', cd<=0);
+  // 暗系蝕明：黑幕吞噬視野
+  const dov = $('darkOv');
+  if (dov) dov.style.opacity = s.fx.blind>0 ? 1 : 0;
   const cu = $('chipUlt');
   cu.textContent = s.fx.gat>0 ? 'Q · 殲滅砲全開！' : (s.ult>=100 ? 'Q · 大招就緒！' : `Q · 大招 ${Math.floor(s.ult)}%`);
   cu.classList.toggle('charged', s.ult>=100 || s.fx.gat>0);
@@ -3002,7 +3321,9 @@ function frame(){
   for (const s of slots){
     if (s.ctrl==='empty' || s.idx===myIdx || !s.avatar) continue;
     const a = s.avatar;
-    a.group.visible = s.alive;
+    // 匿蹤者對敵隊隱形（隊友仍可見）
+    const hiddenFromMe = s.fx.stealth>0 && slots[myIdx] && s.team!==slots[myIdx].team;
+    a.group.visible = s.alive && !hiddenFromMe;
     if (!s.alive) continue;
     if (!isHost && s._tp){
       s.pos.lerp(s._tp, Math.min(1, dt*12));

@@ -45,7 +45,11 @@
   kbd{background:#1b2436;border:1px solid #33415c;border-radius:5px;padding:1px 7px;font-size:12px;color:#cfe0ff}
 
   /* ===== 角色列 ===== */
-  #charRow{display:flex;gap:8px;margin:4px 0 16px;flex-wrap:wrap;justify-content:center}
+  #charRow,#charRowRoom{display:flex;gap:8px;margin:4px 0 16px;flex-wrap:wrap;justify-content:center;max-width:min(560px,94vw)}
+  #charRowRoom{margin:2px 0 10px}
+  #charRowRoom .cbtn{width:64px;padding:7px 3px}
+  #charRowRoom .cbtn .g{font-size:21px}
+  #charRowRoom .cbtn .n{font-size:10px}
   .cbtn{width:82px;padding:9px 4px;border-radius:10px;border:1.5px solid rgba(255,255,255,.14);
     background:rgba(255,255,255,.04);text-align:center;transition:all .15s;color:#cfd9e8}
   .cbtn .g{font-size:26px;font-weight:900;text-shadow:0 0 12px currentColor;font-family:serif}
@@ -64,6 +68,8 @@
   .slot .cg{font-weight:900;font-size:19px;font-family:serif;width:24px;text-align:center}
   .slot .tag{margin-left:auto;font-size:11px;color:#8296b3;letter-spacing:.1em}
   .slot.empty{color:#5b6c86;font-style:italic}
+  .slot.mine{border:1px solid rgba(255,213,74,.55);background:rgba(255,213,74,.08)}
+  .slot .en{font-size:11px;color:#8296b3}
 
   /* ===== HUD ===== */
   #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
@@ -77,6 +83,9 @@
   #hitmark span:nth-child(4){right:0;bottom:0;width:9px;height:2.5px}
   #vign{position:fixed;inset:0;pointer-events:none;z-index:9;opacity:0;
     background:radial-gradient(ellipse at center,transparent 55%,rgba(200,20,20,.55) 100%)}
+  /* 暗系「蝕明」：命中後視野被黑幕吞噬，只留中央一小圈 */
+  #darkOv{position:fixed;inset:0;pointer-events:none;z-index:9;opacity:0;transition:opacity .35s;
+    background:radial-gradient(circle at center,transparent 7%,rgba(8,4,16,.85) 26%,rgba(4,2,10,.97) 48%)}
   #topbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:18px;
     background:rgba(8,11,17,.68);border:1px solid rgba(255,255,255,.1);border-radius:11px;padding:7px 20px;backdrop-filter:blur(5px)}
   #tRed{color:var(--red);font-weight:900;font-size:22px}
@@ -216,8 +225,8 @@
     <div class="row"><button class="btn gld" style="flex:1" id="btnSolo">單人開戰（電腦補滿 3v3）</button></div>
     <div class="note">
       連線採 P2P（PeerJS）：房主建房取得房號，隊友輸入房號即可加入；開戰時人數不足自動以 AI 士兵補齊。<br>
-      七行屬性：金木水火土＋冰（疊凍冰封）＋雷（連鎖閃電）。子彈落點改造戰場：火海/霜地/岩牆/荊棘/碎刃/冰封地/雷場。<br>
-      反應鏈：水冰滅火生蒸汽、火融冰、火燒荊棘更旺、雷擊受寒者超導全場連鎖、土接雷、冰剋木、雷剋水。<br>
+      十行屬性：金木水火土＋冰雷＋風（擊退亂流）／暗（蝕明隱身）／光（光速彈‧治療聖域）。子彈落點改造戰場：火海/霜地/岩牆/荊棘/碎刃/冰封/雷場/亂流/暗幕/聖域。<br>
+      反應鏈：水冰滅火生蒸汽、火融冰、風助火勢、風雪成暴、罡風散暗幕、光暗相剋互滅、雷擊受寒者超導連鎖。<br>
       賽制：三對三團隊死鬥 · 110 分鐘 · 擊殺越多分數越高。<br>
       <kbd>WASD</kbd> 移動 <kbd>Shift</kbd> 疾跑 <kbd>Space</kbd> 跳躍 <kbd>R</kbd> 換彈 <kbd>1-5</kbd> 武器 <kbd>E</kbd> 技能 <kbd>Q</kbd> 大招 <kbd>Tab</kbd> 計分板 · 右鍵開鏡（狙擊）
     </div>
@@ -239,6 +248,8 @@
       <div id="slotsBlue"></div>
     </div>
   </div>
+  <h3 style="color:#9fb2d0;letter-spacing:.3em;margin-bottom:4px;font-size:14px">更 換 屬 性</h3>
+  <div id="charRowRoom"></div>
   <div class="row">
     <button class="btn gry" id="btnSwap">切換隊伍</button>
     <button class="btn pri hidden" id="btnStart">開始作戰（空位由 AI 補齊）</button>
@@ -272,6 +283,7 @@
   </div>
 </div>
 <div id="vign"></div>
+<div id="darkOv"></div>
 <div id="netstat" class="hidden">連線中…</div>
 
 <div id="board" class="hidden">
