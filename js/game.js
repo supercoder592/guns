@@ -564,6 +564,18 @@ function buildTextures(){
     c.fillStyle=g2; c.beginPath(); c.arc(0,0,20,0,7); c.fill();
     TEX.flash = new THREE.CanvasTexture(cv); TEX.flash.colorSpace = THREE.SRGBColorSpace;
   }
+  // 環形衝擊波貼圖（元素命中爆發用）
+  {
+    const cv = document.createElement('canvas'); cv.width=cv.height=128;
+    const c = cv.getContext('2d');
+    const g = c.createRadialGradient(64,64,28,64,64,62);
+    g.addColorStop(0,'rgba(255,255,255,0)');
+    g.addColorStop(.55,'rgba(255,255,255,.95)');
+    g.addColorStop(.78,'rgba(255,255,255,.85)');
+    g.addColorStop(1,'rgba(255,255,255,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(64,64,62,0,7); c.fill();
+    TEX.ring = new THREE.CanvasTexture(cv); TEX.ring.colorSpace = THREE.SRGBColorSpace;
+  }
   // 焦痕 / 彈孔
   {
     const cv = document.createElement('canvas'); cv.width=cv.height=64;
@@ -616,7 +628,23 @@ function buildWorld(){
 
   camera = new THREE.PerspectiveCamera(74, innerWidth/innerHeight, 0.08, 500);
 
-  const hemi = new THREE.HemisphereLight(0xcfe0ee, 0x6b675e, 1.0);
+  // 簡易等距環境貼圖 → PMREM：所有金屬/光滑材質獲得真實反射高光（槍身質感關鍵）
+  {
+    const cv = document.createElement('canvas'); cv.width=64; cv.height=32;
+    const c = cv.getContext('2d');
+    const g = c.createLinearGradient(0,0,0,32);
+    g.addColorStop(0,'#3c4e63'); g.addColorStop(.48,'#5f6468');
+    g.addColorStop(.52,'#403c35'); g.addColorStop(1,'#1c1a16');
+    c.fillStyle=g; c.fillRect(0,0,64,32);
+    c.fillStyle='rgba(255,248,225,.9)'; c.beginPath(); c.arc(45,6,3.5,0,7); c.fill();
+    const eq = new THREE.CanvasTexture(cv);
+    eq.mapping = THREE.EquirectangularReflectionMapping;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromEquirectangular(eq).texture;
+    eq.dispose(); pmrem.dispose();
+  }
+
+  const hemi = new THREE.HemisphereLight(0xcfe0ee, 0x6b675e, 0.72);
   scene.add(hemi);
   sunLight = new THREE.DirectionalLight(0xfff2dd, 2.1);
   sunLight.position.set(55, 90, 30);
@@ -630,7 +658,7 @@ function buildWorld(){
   const fill = new THREE.DirectionalLight(0xbccadd, 0.85);
   fill.position.set(-45, 55, -40);
   scene.add(fill);
-  scene.add(new THREE.AmbientLight(0x3a4048, 0.6));
+  scene.add(new THREE.AmbientLight(0x3a4048, 0.42));
 
   buildTextures();
 
@@ -1005,6 +1033,8 @@ const me = {
 const keys = {};
 let locked = false;
 let mouseDownL = false;
+// CS 式槍模動態：視角慣性搖擺 / 換槍舉槍 / 換彈下壓
+let vmSwayX = 0, vmSwayY = 0, lookDX = 0, lookDY = 0, vmDraw = 0;
 
 function eyeHeight(){ return 1.62; }
 const EYE = ()=> me.pos.y + eyeHeight();
@@ -1059,6 +1089,7 @@ function updateLocal(dt){
   const touchMag = touchMove ? Math.hypot(touchIn.mvx, touchIn.mvy) : 0;
   let speed = 4.6;
   if ((keys.ShiftLeft || (touchMove && touchMag > 0.92)) && !me.zoomed) speed = 6.4; // 搖桿推到底=疾跑
+  const sprinting = speed > 6;
   if (fx.slow>0) speed *= 0.6;
   if (fx.haste>0) speed *= 1.5;
   if (rooted) speed = 0;
@@ -1100,6 +1131,23 @@ function updateLocal(dt){
   me.recoil *= Math.pow(0.001, dt);
   me.spreadHeat = Math.max(0, me.spreadHeat - dt*2.2);
 
+  // 槍模動態（CS 手感）：視角慣性搖擺、移動起伏、換槍舉槍、換彈下壓
+  vmDraw = Math.max(0, vmDraw - dt*3.4);
+  const swTX = clamp(-lookDX*0.00055, -.035, .035);
+  const swTY = clamp(lookDY*0.00045, -.03, .03);
+  lookDX = 0; lookDY = 0;
+  vmSwayX += (swTX - vmSwayX)*Math.min(1, dt*7);
+  vmSwayY += (swTY - vmSwayY)*Math.min(1, dt*7);
+  if (viewmodel){
+    const mv = slot.moving ? (sprinting?1.5:1) : 0;
+    const rl = me.reloading > 0 ? 1 : 0;
+    viewmodel.position.x = 0.22 + vmSwayX + mv*Math.sin(me.bobT)*0.009;
+    viewmodel.position.y = -0.2 + vmSwayY*0.6 - mv*Math.abs(Math.cos(me.bobT))*0.011
+                           - vmDraw*0.24 - rl*(0.06 + Math.sin(now()*7)*0.015);
+    viewmodel.rotation.z = -vmSwayX*1.7 - mv*Math.sin(me.bobT)*0.012;
+    viewmodel.rotation.x = 0.02 + vmSwayY*2.2 - vmDraw*1.0 - rl*0.38;
+  }
+
   // 開火 / 換彈
   me.fireCd -= dt;
   if (me.reloading > 0){
@@ -1110,7 +1158,7 @@ function updateLocal(dt){
     const eff = slots[myIdx].fx.gat>0 ? GUNS[5] : GUNS[me.gun];
     if (!eff.auto) mouseDownL = false;
   }
-  const targetFov = me.zoomed && GUNS[me.gun].zoom ? 22 : 74;
+  const targetFov = me.zoomed && GUNS[me.gun].zoom ? 22 : (sprinting && slot.moving ? 80 : 74);
   camera.fov += (targetFov-camera.fov)*Math.min(1,dt*14);
   camera.updateProjectionMatrix();
   // 狙擊鏡遮罩：開鏡時隱藏槍模與準星，顯示鏡內視野
@@ -1166,8 +1214,7 @@ function tryFire(){
         showHitmark(ud.part==='head');
         sfx('hit');
         reportHit(ud.slot, ud.part, gat?5:me.gun, h.distance);
-        const vs = slots[ud.slot];
-        sparkBurst(h.point, vs ? EL[CHARS[vs.char].el].color : 0xff4444, 6, 2.5);
+        elemHitFX(h.point, myEl);   // 屬性專屬命中爆發
         spawnSmoke(h.point.x, h.point.y, h.point.z, {n:2, size:.5, color:0x883333, rise:.4, life:.6, grow:.5, opacity:.5, spread:.15});
         end = h.point;
         break;
@@ -1327,9 +1374,9 @@ function rebuildViewmodel(){
   const e = EL[CHARS[slots[myIdx]?.char ?? selChar].el];
   // 寫實槍材
   const M = {
-    black: new THREE.MeshStandardMaterial({color:0x23272d, roughness:.5,  metalness:.35}),
-    dark:  new THREE.MeshStandardMaterial({color:0x363c45, roughness:.55, metalness:.25}),
-    steel: new THREE.MeshStandardMaterial({color:0x7b838c, roughness:.35, metalness:.3}),
+    black: new THREE.MeshStandardMaterial({color:0x23272d, roughness:.4,  metalness:.62}),
+    dark:  new THREE.MeshStandardMaterial({color:0x363c45, roughness:.46, metalness:.55}),
+    steel: new THREE.MeshStandardMaterial({color:0x8b939c, roughness:.24, metalness:.9}),
     wood:  new THREE.MeshStandardMaterial({map:TEX.wood,  roughness:.75}),
     poly:  new THREE.MeshStandardMaterial({color:0x2e3237, roughness:.75, metalness:.05}),
     elem:  new THREE.MeshStandardMaterial({color:e.color, emissive:e.color, emissiveIntensity:1.1}),
@@ -1885,6 +1932,10 @@ function onGameEvent(d){
       waveRing(d.p[0], d.p[2], 0x49c8ff, 46, 1.9, 4.5);
       waveRing(d.p[0], d.p[2], 0xbfeaff, 46, 2.3, 2.2);
       spawnSmoke(d.p[0], .5, d.p[2], {n:14, size:2.4, color:0xcfeaff, rise:2.4, life:1.6, grow:1.6, opacity:.6, spread:3});
+      for (let i=0;i<8;i++){   // 八方水柱連環噴發
+        const a2 = i/8*Math.PI*2 + rand(-.2,.2);
+        setTimeout(()=> waterColumnFX(d.p[0]+Math.cos(a2)*rand(4,14), d.p[2]+Math.sin(a2)*rand(4,14), rand(5,8)), i*110);
+      }
     }
     if (c.el==='wood'){
       ringFX(new THREE.Vector3(d.p[0],0.2,d.p[2]), 0x4ade80, 30, 1.6);
@@ -1920,6 +1971,7 @@ function onGameEvent(d){
     }
     if (c.el==='light'){
       const f = $('flash');
+      f.style.background = '#fff';
       f.style.transition='none'; f.style.opacity = .95;
       setTimeout(()=>{ f.style.transition='opacity 1.1s'; f.style.opacity=0; }, 80);
       waveRing(d.p[0], d.p[2], 0xffe98a, 48, 2, 4);
@@ -2528,6 +2580,73 @@ function bladeOrbit(idx, dur=6){ // 金大招：環體飛劍（純視覺，傷�
   }, ()=> scene.remove(group));
 }
 
+/* ---- 元素命中爆發（寶可夢級）：每屬性專屬的擊中演出 ---- */
+function spriteBurst(p, tex, color, s0, s1, life, opacity=1){
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:tex, color, transparent:true,
+    depthWrite:false, blending:THREE.AdditiveBlending}));
+  sp.position.copy(p); sp.scale.set(s0, s0, 1);
+  sp.material.rotation = Math.random()*Math.PI*2;
+  scene.add(sp);
+  addSpecial(life, (dt,k)=>{
+    const s = s0 + (s1-s0)*k;
+    sp.scale.set(s, s, 1);
+    sp.material.opacity = opacity*(1-k);
+  }, ()=> scene.remove(sp));
+}
+function elemHitFX(p, el){
+  switch (el){
+    case 'metal':   // 十字斬光
+      spriteBurst(p, TEX.flash, 0xffe9a0, .3, 1.2, .22);
+      sparkBurst(p, 0xffe9a0, 10, 5);
+      break;
+    case 'wood':    // 綠環爆＋葉屑
+      spriteBurst(p, TEX.ring, 0x4ade80, .2, 1.3, .3);
+      spawnDebris(p.x, p.y, p.z, 0x3fae63, 5, {min:.03, max:.07, spd:3.5, bounce:.1});
+      sparkBurst(p, 0x7dfa9e, 6, 3);
+      break;
+    case 'water':   // 水花環＋飛沫
+      spriteBurst(p, TEX.ring, 0x6fd4ff, .16, 1.5, .3);
+      spawnDebris(p.x, p.y, p.z, 0x9adcff, 4, {min:.03, max:.06, spd:3, bounce:.1});
+      spawnSmoke(p.x, p.y, p.z, {n:2, size:.5, color:0xbfeaff, add:true, rise:.5, life:.35, grow:1, opacity:.6, spread:.08});
+      break;
+    case 'fire':    // 烈焰爆
+      spriteBurst(p, TEX.flame, 0xffb060, .45, 1.6, .3);
+      spawnSmoke(p.x, p.y, p.z, {flame:true, n:3, size:.6, rise:.9, life:.35, grow:1, opacity:.95, spread:.12});
+      sparkBurst(p, 0xff9040, 8, 4);
+      break;
+    case 'earth':   // 碎岩＋沙塵
+      spawnDebris(p.x, p.y, p.z, 0x8a6a3c, 5, {min:.04, max:.1, spd:4});
+      spawnSmoke(p.x, p.y, p.z, {n:3, size:.6, color:0xa08b62, rise:.6, life:.7, grow:.8, opacity:.6, spread:.15});
+      spriteBurst(p, TEX.ring, 0xc99a4e, .2, .9, .25, .7);
+      break;
+    case 'ice':     // 冰晶迸裂＋寒光
+      spriteBurst(p, TEX.flash, 0xdff4ff, .22, 1, .25);
+      spawnDebris(p.x, p.y, p.z, 0xbfeaff, 5, {min:.03, max:.08, spd:4, bounce:.2});
+      spawnSmoke(p.x, p.y, p.z, {n:2, size:.4, color:0xe8f6ff, rise:.3, life:.5, grow:.6, opacity:.55, spread:.08});
+      break;
+    case 'thunder': // 電光星爆＋亂竄電弧
+      spriteBurst(p, TEX.flash, 0xd8b4ff, .3, 1.4, .2);
+      for (let i=0;i<2;i++){
+        const o = p.clone().add(new THREE.Vector3(rand(-1,1), rand(-.3,1), rand(-1,1)));
+        arcLine(p.clone(), o, .35, 0xd8b4ff);
+      }
+      sparkBurst(p, 0xf0e0ff, 8, 5);
+      break;
+    case 'wind':    // 氣旋環擴散
+      spriteBurst(p, TEX.ring, 0xbdf5e0, .2, 1.7, .28);
+      spawnSmoke(p.x, p.y, p.z, {n:2, size:.4, color:0xe4fff5, rise:.5, life:.4, grow:1.2, opacity:.4, spread:.1});
+      break;
+    case 'dark':    // 黑霧吞噬（光點收縮）
+      spawnSmoke(p.x, p.y, p.z, {n:4, size:.55, color:0x150a26, rise:.4, life:.6, grow:.9, opacity:.85, spread:.1});
+      spriteBurst(p, TEX.spark, 0x8b5cf6, .8, .08, .28);
+      break;
+    case 'light':   // 聖光星芒
+      spriteBurst(p, TEX.flash, 0xfff6cf, .35, 1.7, .25);
+      sparkBurst(p, 0xfff8d8, 10, 5);
+      break;
+  }
+}
+
 function windVortexFX(x, z){ // 風大招：旋捲上升的龍捲氣旋
   const group = new THREE.Group();
   const streaks = [];
@@ -2906,11 +3025,34 @@ function ringFX(p, color, maxR, life=1){
   fxList.push({obj:m, die:now()+life, mat, ring:{maxR, t0:now(), life}});
 }
 function meteorFX(x, z){
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.8,10,8),
-    new THREE.MeshBasicMaterial({color:0xffa040}));
-  m.position.set(x, 30, z);
+  // 隕焰：白熱核心＋巨焰包裹＋動態光源
+  const g = new THREE.Group();
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.62,10,8),
+    new THREE.MeshBasicMaterial({color:0xfff0c8}));
+  const fl = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.flame, transparent:true,
+    depthWrite:false, blending:THREE.AdditiveBlending}));
+  fl.scale.set(3.4, 3.4, 1);
+  const L = new THREE.PointLight(0xff9040, 30, 26, 1.6);
+  g.add(core); g.add(fl); g.add(L);
+  g.position.set(x, 30, z);
+  scene.add(g);
+  fxList.push({obj:g, mat:core.material, die:now()+2, meteor:{x,z}});
+}
+function waterColumnFX(x, z, h=7){
+  // 水大招：地面噴發水柱
+  const mat = new THREE.MeshBasicMaterial({color:0x66ccff, transparent:true, opacity:.7,
+    blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide});
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(.5, .85, h, 10, 1, true), mat);
+  m.position.set(x, 0, z); m.scale.y = .05;
   scene.add(m);
-  fxList.push({obj:m, mat:m.material, die:now()+2, meteor:{x,z}});
+  addSpecial(1.1, (dt,k)=>{
+    const g2 = k < .35 ? k/.35 : 1-(k-.35)/.65;
+    m.scale.y = Math.max(.05, g2); m.position.y = h*m.scale.y/2;
+    mat.opacity = .7*(1-k*.7);
+    if (Math.random() < .4)
+      spawnSmoke(x+rand(-.5,.5), h*m.scale.y, z+rand(-.5,.5),
+        {n:1, size:.5, color:0xbfeaff, add:true, rise:1, life:.4, grow:.6, opacity:.6, spread:.2});
+  }, ()=> scene.remove(m));
 }
 function deathPuff(p, team){
   const col = team==='red'?0xff5a4e:0x4ea1ff;
@@ -2922,6 +3064,85 @@ function deathPuff(p, team){
 }
 let camShake = 0;
 function shakeCam(v){ camShake = Math.max(camShake, v); }
+
+/* ---- 角色狀態特效（寶可夢式）：著火、冰晶封體、藤蔓纏腳、暈眩金星 ---- */
+function avatarStatusFX(s, a){
+  const t = now();
+  // 灼燒：身上竄火＋黑煙
+  if (s.fx.burn > 0){
+    if (!a.burnFX){
+      a.burnFX = new THREE.Group();
+      for (let i=0;i<3;i++){
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.flame, transparent:true,
+          depthWrite:false, blending:THREE.AdditiveBlending}));
+        sp.position.set(rand(-.22,.22), .85 + i*.32, rand(-.18,.18));
+        a.burnFX.add(sp);
+      }
+      a.group.add(a.burnFX);
+    }
+    a.burnFX.visible = true;
+    a.burnFX.children.forEach((sp,i)=>{
+      const k = .3 + Math.abs(Math.sin(t*11 + i*2.1))*.28;
+      sp.scale.set(k, k*1.45, 1);
+    });
+    if (Math.random() < .07)
+      spawnSmoke(s.pos.x, s.pos.y+1.7, s.pos.z, {n:1, size:.4, color:0x3a3d42, rise:1, life:.8, grow:.6, opacity:.4, spread:.12});
+  } else if (a.burnFX) a.burnFX.visible = false;
+  // 緩速/疊凍：冰晶附體＋寒霧
+  if (s.fx.slow > 0 || s.fx.frz > 0){
+    if (!a.iceFX){
+      a.iceFX = new THREE.Group();
+      const im = new THREE.MeshStandardMaterial({color:0xdff4ff, emissive:0x9fd8f0,
+        emissiveIntensity:.5, transparent:true, opacity:.85, roughness:.1});
+      for (let i=0;i<5;i++){
+        const cn = new THREE.Mesh(new THREE.ConeGeometry(rand(.05,.09), rand(.2,.36), 5), im);
+        const ang = i/5*Math.PI*2 + .5;
+        cn.position.set(Math.cos(ang)*.3, .35 + (i%3)*.42, Math.sin(ang)*.3);
+        cn.rotation.set(rand(-.6,.6), 0, rand(-.6,.6));
+        a.iceFX.add(cn);
+      }
+      a.group.add(a.iceFX);
+    }
+    a.iceFX.visible = true;
+    if (Math.random() < .05)
+      spawnSmoke(s.pos.x, s.pos.y+.4, s.pos.z, {n:1, size:.5, color:0xe8f6ff, rise:.2, life:.8, grow:.5, opacity:.4, spread:.25});
+  } else if (a.iceFX) a.iceFX.visible = false;
+  // 纏繞：腳邊藤蔓收束
+  if (s.fx.root > 0){
+    if (!a.rootFX){
+      a.rootFX = new THREE.Group();
+      const vm = new THREE.MeshStandardMaterial({color:0x2f9e57, roughness:.8});
+      for (let i=0;i<5;i++){
+        const cn = new THREE.Mesh(new THREE.ConeGeometry(.055, .75, 5), vm);
+        const ang = i/5*Math.PI*2;
+        cn.position.set(Math.cos(ang)*.3, .3, Math.sin(ang)*.3);
+        cn.rotation.set(Math.sin(ang)*.55, 0, -Math.cos(ang)*.55);
+        a.rootFX.add(cn);
+      }
+      a.group.add(a.rootFX);
+    }
+    a.rootFX.visible = true;
+  } else if (a.rootFX) a.rootFX.visible = false;
+  // 暈眩：頭頂金星環繞
+  if (s.fx.stun > 0){
+    if (!a.stunFX){
+      a.stunFX = new THREE.Group();
+      for (let i=0;i<3;i++){
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color:0xffe36b,
+          transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+        sp.scale.set(.17,.17,1);
+        a.stunFX.add(sp);
+      }
+      a.stunFX.position.y = 1.95;
+      a.group.add(a.stunFX);
+    }
+    a.stunFX.visible = true;
+    a.stunFX.children.forEach((sp,i)=>{
+      const ang = t*5 + i/3*Math.PI*2;
+      sp.position.set(Math.cos(ang)*.28, Math.sin(t*7+i)*.05, Math.sin(ang)*.28);
+    });
+  } else if (a.stunFX) a.stunFX.visible = false;
+}
 
 /* ------------------------- AI（僅主機模擬） ------------------------- */
 const NAV = [];
@@ -3247,12 +3468,30 @@ function boardHTML(rows, r, b){
 
 /* ------------------------- HUD ------------------------- */
 function buildXhair(){
+  // CS 式動態準星：移動/連射時四臂外擴，中心固定小點
   const x = $('xhair');
   x.innerHTML = '';
-  for (const [w,h,l,t] of [[2,6,12,0],[2,6,12,20],[6,2,0,12],[6,2,20,12]]){
-    const s = document.createElement('span');
-    s.style.cssText = `width:${w}px;height:${h}px;left:${l}px;top:${t}px`;
-    x.appendChild(s);
+  x.style.width = x.style.height = '0px';
+  const mk = (w,h)=>{ const s = document.createElement('span');
+    s.style.cssText = `width:${w}px;height:${h}px;left:0;top:0;position:absolute`;
+    x.appendChild(s); return s; };
+  const dot = mk(2.6, 2.6);
+  dot.style.borderRadius = '50%';
+  dot.style.transform = 'translate(-50%,-50%)';
+  buildXhair.arms = [
+    {el:mk(2,7), dx:0,  dy:-1, w:2, h:7},
+    {el:mk(2,7), dx:0,  dy:1,  w:2, h:7},
+    {el:mk(7,2), dx:-1, dy:0,  w:7, h:2},
+    {el:mk(7,2), dx:1,  dy:0,  w:7, h:2},
+  ];
+  updateXhair(4, true);
+}
+function updateXhair(gap, force){
+  if (!force && Math.abs(gap - (updateXhair._g||0)) < 0.4) return;
+  updateXhair._g = gap;
+  for (const a of buildXhair.arms){
+    const ox = a.dx*(gap + a.w/2), oy = a.dy*(gap + a.h/2);
+    a.el.style.transform = `translate(calc(${ox}px - 50%), calc(${oy}px - 50%))`;
   }
 }
 buildXhair();
@@ -3298,6 +3537,7 @@ function ultCutin(c, e, mine){
   $('ultsub').textContent = c.ultSub;
   cut.classList.remove('show'); void cut.offsetWidth; cut.classList.add('show');
   const f = $('flash');
+  f.style.background = e.css;   // 閃屏染上屬性色
   f.style.transition='none'; f.style.opacity= mine?0.8:0.35;
   setTimeout(()=>{ f.style.transition='opacity .7s'; f.style.opacity=0; }, 60);
   shakeCam(mine?0.5:0.25);
@@ -3310,6 +3550,10 @@ function fmtTime(sec){
 }
 function updateHUD(){
   const s = slots[myIdx];
+  // 動態準星擴張：武器散佈＋連射熱度＋移動＋滯空
+  const xg = GUNS[me.gun];
+  const spNow = xg.spread*(1+me.spreadHeat) + (s.moving?0.014:0) + (me.onGround?0:0.02);
+  updateXhair(clamp(3.5 + spNow*300, 3.5, 26));
   $('tRed').textContent = scores.red; $('tBlue').textContent = scores.blue;
   $('timer').textContent = fmtTime(matchT);
   $('hpfill').style.width = clamp(s.hp,0,100)+'%';
@@ -3393,6 +3637,7 @@ addEventListener('keydown', e=>{
 function switchGun(i){
   if (i===me.gun) return;
   me.gun=i; me.ammo=GUNS[i].mag; me.reloading=0; me.zoomed=false;
+  vmDraw = 1;   // 舉槍動畫
   rebuildViewmodel(); updateAmmoUI(); updateTouchGunUI();
 }
 function updateTouchGunUI(){
@@ -3412,6 +3657,7 @@ addEventListener('mousemove', e=>{
   const sens = 0.0023 * (me.zoomed?0.45:1);
   me.yaw   -= e.movementX * sens;
   me.pitch = clamp(me.pitch - e.movementY*sens, -1.45, 1.45);
+  lookDX += e.movementX; lookDY += e.movementY;   // 槍模慣性搖擺
 });
 addEventListener('mousedown', e=>{
   if (!started || IS_TOUCH) return;
@@ -3464,6 +3710,7 @@ if (IS_TOUCH){
         const sens = 0.0045 * (me.zoomed?0.45:1);
         me.yaw   -= (t.clientX-touchIn.lx)*sens;
         me.pitch  = clamp(me.pitch-(t.clientY-touchIn.ly)*sens, -1.45, 1.45);
+        lookDX += (t.clientX-touchIn.lx)*1.6; lookDY += (t.clientY-touchIn.ly)*1.6;
         touchIn.lx = t.clientX; touchIn.ly = t.clientY;
       }
     }
@@ -3514,6 +3761,7 @@ if (IS_TOUCH){
       const sens = 0.0045 * (me.zoomed?0.45:1);
       me.yaw   -= (t.clientX-fireT.lx)*sens;
       me.pitch  = clamp(me.pitch-(t.clientY-fireT.ly)*sens, -1.45, 1.45);
+      lookDX += (t.clientX-fireT.lx)*1.6; lookDY += (t.clientY-fireT.ly)*1.6;
       fireT.lx = t.clientX; fireT.ly = t.clientY;
     }
   }, {passive:false});
@@ -3613,6 +3861,7 @@ function frame(){
       }
       a.shieldM.visible = true;
     } else if (a.shieldM) a.shieldM.visible = false;
+    avatarStatusFX(s, a);   // 著火/冰凍/纏繞/暈眩狀態演出
   }
 
   // 特效壽命
@@ -3627,7 +3876,9 @@ function frame(){
     }
     if (f.meteor){
       f.obj.position.y -= 55 * 0.016;
-      if (Math.random()<.5) spawnSmoke(f.obj.position.x, f.obj.position.y, f.obj.position.z,
+      if (Math.random()<.7) spawnSmoke(f.obj.position.x, f.obj.position.y+.6, f.obj.position.z,
+        {flame:true, n:1, size:1.2, rise:-.4, life:.4, grow:.5, opacity:.9, spread:.35});
+      if (Math.random()<.5) spawnSmoke(f.obj.position.x, f.obj.position.y+1, f.obj.position.z,
         {n:1, size:.9, color:0x54575c, rise:.2, life:1.1, grow:.8, opacity:.5, spread:.2});
       if (f.obj.position.y <= 0.5){
         ringFX(new THREE.Vector3(f.meteor.x,0.2,f.meteor.z), 0xff8040, 8, 0.7);
