@@ -70,6 +70,8 @@
   .slot.empty{color:#5b6c86;font-style:italic}
   .slot.mine{border:1px solid rgba(255,213,74,.55);background:rgba(255,213,74,.08)}
   .slot .en{font-size:11px;color:#8296b3}
+  .slot.cfg{cursor:pointer;font-style:normal;color:#cfd9e8;border:1px dashed rgba(255,255,255,.25);transition:background .15s}
+  .slot.cfg:hover{background:rgba(255,255,255,.12)}
 
   /* ===== HUD ===== */
   #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
@@ -167,6 +169,7 @@
   #btnJumpT{right:32px;bottom:200px;width:62px;height:62px;font-size:13px}
   #btnGunT{right:214px;bottom:96px;width:58px;height:58px;font-size:12px}
   #btnZoomT{right:218px;bottom:172px;width:54px;height:54px;font-size:12px}
+  #btnNadeT{right:44px;bottom:272px;width:54px;height:54px;font-size:12px;border-color:rgba(255,200,90,.6)}
   #joyBase{position:fixed;width:112px;height:112px;border-radius:50%;border:2px solid rgba(255,255,255,.3);
     background:rgba(255,255,255,.07);display:none;z-index:13;pointer-events:none;transform:translate(-50%,-50%)}
   #joyKnob{position:fixed;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.4);
@@ -189,6 +192,7 @@
     #btnJumpT{bottom:calc(200px + env(safe-area-inset-bottom))}
     #btnGunT{bottom:calc(96px + env(safe-area-inset-bottom))}
     #btnZoomT{bottom:calc(168px + env(safe-area-inset-bottom))}
+    #btnNadeT{bottom:calc(272px + env(safe-area-inset-bottom))}
     body.touch #bl{bottom:calc(200px + env(safe-area-inset-bottom))}
   }
 
@@ -228,7 +232,7 @@
       十行屬性：金木水火土＋冰雷＋風（擊退亂流）／暗（蝕明隱身）／光（光速彈‧治療聖域）。子彈落點改造戰場：火海/霜地/岩牆/荊棘/碎刃/冰封/雷場/亂流/暗幕/聖域。<br>
       反應鏈：水冰滅火生蒸汽、火融冰、風助火勢、風雪成暴、罡風散暗幕、光暗相剋互滅、雷擊受寒者超導連鎖。<br>
       賽制：三對三團隊死鬥 · 110 分鐘 · 擊殺越多分數越高。<br>
-      <kbd>WASD</kbd> 移動 <kbd>Shift</kbd> 疾跑 <kbd>Space</kbd> 跳躍 <kbd>R</kbd> 換彈 <kbd>1-5</kbd> 武器 <kbd>E</kbd> 技能 <kbd>Q</kbd> 大招 <kbd>Tab</kbd> 計分板 · 右鍵開鏡（狙擊）
+      <kbd>WASD</kbd> 移動 <kbd>Shift</kbd> 疾跑 <kbd>Space</kbd> 跳躍 <kbd>R</kbd> 換彈 <kbd>1-5</kbd> 武器 <kbd>E</kbd> 技能 <kbd>Q</kbd> 大招 <kbd>G</kbd> 屬性手雷 <kbd>Tab</kbd> 計分板 · 右鍵開鏡（狙擊）
     </div>
     <div class="note" style="margin-top:8px"><a href="classic.html" style="color:#4ea1ff">→ 玩 2D 經典版</a></div>
   </div>
@@ -252,7 +256,8 @@
   <div id="charRowRoom"></div>
   <div class="row">
     <button class="btn gry" id="btnSwap">切換隊伍</button>
-    <button class="btn pri hidden" id="btnStart">開始作戰（空位由 AI 補齊）</button>
+    <button class="btn gry hidden" id="btnBots">人機補位：開</button>
+    <button class="btn pri hidden" id="btnStart">開始作戰</button>
   </div>
   <div class="note" id="roomHint">等待房主開始作戰…</div>
 </div>
@@ -274,6 +279,7 @@
     <div id="chips">
       <div class="chip" id="chipSkill">E · 技能</div>
       <div class="chip" id="chipUlt">Q · 大招</div>
+      <div class="chip" id="chipNade">G · 手雷 ×2</div>
     </div>
   </div>
   <div id="br">
@@ -309,6 +315,7 @@
   <div class="tbtn" id="btnJumpT">跳</div>
   <div class="tbtn" id="btnGunT">換槍</div>
   <div class="tbtn" id="btnZoomT">鏡</div>
+  <div class="tbtn" id="btnNadeT">雷×2</div>
 </div>
 <div id="joyBase"></div><div id="joyKnob"></div>
 

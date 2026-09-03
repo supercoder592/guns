@@ -123,7 +123,7 @@ function sfx(kind, vol=1){
 /* ctrl: 'local' | 'net' | 'bot' | 'empty' */
 function mkSlot(i){
   return {
-    idx:i, ctrl:'empty', peer:null, name:'', char:2, team: i<TEAM_SIZE?'red':'blue',
+    idx:i, ctrl:'empty', peer:null, name:'', char:2, botChar:-1, team: i<TEAM_SIZE?'red':'blue',
     hp:100, alive:true, respawnAt:0,
     pos:new THREE.Vector3(), ry:0, rx:0, moving:false, gun:2,
     kills:0, deaths:0, score:0, streak:0, ult:0,
@@ -184,7 +184,8 @@ function fillBots(){
   let bn = 0;
   for (const s of slots) if (s.ctrl==='empty'){
     s.ctrl='bot'; s.name=BOT_NAMES[bn++ % BOT_NAMES.length];
-    s.char = Math.floor(Math.random()*CHARS.length);
+    // 房間內同隊可預先指定 AI 屬性；未指定則隨機
+    s.char = (s.botChar!=null && s.botChar>=0) ? s.botChar : Math.floor(Math.random()*CHARS.length);
     s.gun = [1,2,2,3,4][Math.floor(Math.random()*5)];
   }
 }
@@ -241,6 +242,20 @@ function hostOnData(conn, d){
     roomBroadcast();
   }
   else if (d.t==='char'){ const s=slots[conn._idx]; if(s&&!started){ s.char=clamp(d.c|0,0,CHARS.length-1); roomBroadcast(); } }
+  else if (d.t==='botchar'){ // 同隊玩家指定空位 AI 的屬性
+    const from = slots[conn._idx], s = slots[d.i|0];
+    if (from && s && !started && s.ctrl==='empty' && s.team===from.team){
+      s.botChar = clamp(d.c|0, -1, CHARS.length-1); roomBroadcast();
+    }
+  }
+  else if (d.t==='nade'){ // 來賓丟手雷：主機權威模擬並轉播
+    const s = slots[conn._idx];
+    if (s && s.ctrl==='net' && s.alive && started && Array.isArray(d.p) && Array.isArray(d.v)){
+      const nid = String(d.nid || (conn._idx+'_'+Math.random()));
+      bcast({t:'ev', k:'nade', i:conn._idx, nid, p:d.p, v:d.v}, conn);
+      spawnNade(nid, conn._idx, new THREE.Vector3(d.p[0],d.p[1],d.p[2]), new THREE.Vector3(d.v[0],d.v[1],d.v[2]), true);
+    }
+  }
   else if (d.t==='swap'){ if(!started) trySwap(conn._idx); }
   else if (d.t==='in'){ const s=slots[conn._idx]; if(s&&s.ctrl==='net'){
       s.pos.set(d.p[0],d.p[1],d.p[2]); s.ry=d.ry; s.rx=d.rx; s.moving=!!d.mv; s.gun=clamp(d.g|0,0,4); } }
@@ -278,9 +293,10 @@ function trySwap(idx){
   if (keep.ctrl==='net'){ const c=conns.find(c=>c.peer===keep.peer); if(c){ c._idx=dst.idx; send(c,{t:'you',idx:dst.idx}); } }
   roomBroadcast();
 }
+let roomBots = true;   // 房主選項：人數不足時是否以 AI 補位（關閉適合 1v1 單挑）
 function roomBroadcast(){
-  const pack = slots.map(s=> ({i:s.idx, c:s.ctrl, n:s.name, ch:s.char, tm:s.team}));
-  bcast({t:'room', slots:pack});
+  const pack = slots.map(s=> ({i:s.idx, c:s.ctrl, n:s.name, ch:s.char, tm:s.team, bc:s.botChar}));
+  bcast({t:'room', slots:pack, bots:roomBots});
   renderRoom();
 }
 
@@ -314,8 +330,9 @@ function guestOnData(d){
   if (d.t==='you'){ myIdx = d.idx; }
   else if (d.t==='room'){
     slots = Array.from({length:TEAM_SIZE*2}, (_,i)=> mkSlot(i));
-    for(const p of d.slots){ const s=slots[p.i]; s.ctrl=p.c; s.name=p.n; s.char=p.ch; s.team=p.tm; }
+    for(const p of d.slots){ const s=slots[p.i]; s.ctrl=p.c; s.name=p.n; s.char=p.ch; s.team=p.tm; s.botChar=p.bc??-1; }
     if (slots[myIdx]) slots[myIdx].ctrl='local';
+    if (d.bots!==undefined) roomBots = !!d.bots;
     renderRoom();
   }
   else if (d.t==='full'){ netFail('房間已滿。'); }
@@ -343,14 +360,14 @@ function showRoom(code, host){
   $('roomCode').onclick = ()=>{ try{ navigator.clipboard.writeText(code); $('roomCode').style.color='#4ade80';
     setTimeout(()=>$('roomCode').style.color='', 600); }catch(e){} };
   $('btnStart').classList.toggle('hidden', !host);
-  $('roomHint').textContent = host ? '把房號告訴隊友；等待期間可隨時更換屬性；按「開始作戰」空位將由 AI 士兵補齊。'
-                                   : '等待房主開始作戰…（等待期間可隨時更換屬性）';
+  $('btnBots').classList.toggle('hidden', !host);
   $('btnStart').onclick = ()=>{
-    fillBots();
+    if (roomBots) fillBots();   // 關閉人機補位：空位保持空，適合單挑
     const pack = slots.map(s=> ({i:s.idx, c:s.ctrl==='local'?'net':s.ctrl, n:s.name, ch:s.char, tm:s.team, g:s.gun}));
     bcast({t:'start', slots:pack, time:matchT});
     startMatch();
   };
+  $('btnBots').onclick = ()=>{ roomBots = !roomBots; roomBroadcast(); };
   $('btnSwap').onclick = ()=>{
     if (netMode==='host') trySwap(myIdx);
     else if (conns[0]) send(conns[0], {t:'swap'});
@@ -359,11 +376,39 @@ function showRoom(code, host){
 }
 function renderRoom(){
   if ($('room').classList.contains('hidden')) return;
+  $('btnBots').textContent = '人機補位：'+(roomBots?'開':'關');
+  $('btnStart').textContent = roomBots ? '開始作戰（空位由 AI 補齊）' : '開始作戰（不補人機）';
+  $('roomHint').textContent = (netMode==='host'
+      ? '把房號告訴隊友；等待期間可隨時更換屬性；「人機補位：關」適合單挑。'
+      : '等待房主開始作戰…（等待期間可隨時更換屬性）')
+    + (roomBots ? '點擊我方空位可指定該 AI 士兵的屬性。' : '');
   const mk = (team, box)=>{
     box.innerHTML='';
     for (const s of slots.filter(x=>x.team===team)){
       const d = document.createElement('div');
-      if (s.ctrl==='empty'){ d.className='slot empty'; d.textContent='（空位 — 開戰時由 AI 補齊）'; }
+      if (s.ctrl==='empty'){
+        if (!roomBots){ d.className='slot empty'; d.textContent='（空位 — 不補人機）'; }
+        else {
+          // 空位＝未來的 AI 士兵：同隊玩家可點擊循環指定屬性（🎲=隨機）
+          const bc = (s.botChar!=null && s.botChar>=0) ? s.botChar : -1;
+          const myTeam = slots[myIdx] && slots[myIdx].team===team;
+          d.className = 'slot empty'+(myTeam?' cfg':'');
+          if (bc>=0){
+            const e2 = EL[CHARS[bc].el];
+            d.innerHTML = `<span class="cg" style="color:${e2.css}">${e2.glyph}</span><span>AI 士兵</span>`+
+              `<span class="en" style="color:${e2.css}">${e2.name}</span><span class="tag">${myTeam?'點擊換屬性':'AI'}</span>`;
+          } else {
+            d.innerHTML = `<span class="cg">🎲</span><span>AI 士兵（隨機屬性）</span><span class="tag">${myTeam?'點擊選屬性':'AI'}</span>`;
+          }
+          if (myTeam && !started){
+            d.onclick = ()=>{
+              const next = bc+1 >= CHARS.length ? -1 : bc+1;
+              if (netMode==='host'){ s.botChar = next; roomBroadcast(); }
+              else if (conns[0]) send(conns[0], {t:'botchar', i:s.idx, c:next});
+            };
+          }
+        }
+      }
       else {
         d.className = 'slot'+(s.idx===myIdx?' mine':'');
         const e = EL[CHARS[s.char].el];
@@ -947,7 +992,7 @@ const me = {
   pos: new THREE.Vector3(), vel: new THREE.Vector3(),
   yaw:0, pitch:0, onGround:true,
   gun:2, ammo:GUNS[2].mag, reloading:0, fireCd:0, recoil:0, spreadHeat:0,
-  zoomed:false, bobT:0, dead:false,
+  zoomed:false, bobT:0, dead:false, nades:2,
 };
 const keys = {};
 let locked = false;
@@ -966,6 +1011,7 @@ function respawnLocal(){
   me.yaw = Math.atan2(-p.x, -p.z); // 面向場中央
   me.pitch = 0; me.dead=false;
   me.ammo = GUNS[me.gun].mag; me.reloading=0;
+  me.nades = 2;   // 重生補滿手雷
   $('deathScr').classList.add('hidden');
 }
 
@@ -1893,6 +1939,14 @@ function onGameEvent(d){
       me.vel.x += d.x; me.vel.z += d.z; if (d.y) me.vel.y += d.y;
     }
   }
+  else if (d.k==='nade'){   // 他人丟出手雷：本地做視覺模擬（丟的人已有本地實體）
+    if (d.i !== myIdx)
+      spawnNade(d.nid, d.i, new THREE.Vector3(d.p[0],d.p[1],d.p[2]), new THREE.Vector3(d.v[0],d.v[1],d.v[2]), false);
+  }
+  else if (d.k==='nboom'){  // 主機權威爆點：本地還在飛的同顆手雷就地引爆（已爆過則略過）
+    const i = nades.findIndex(n=> n.nid===String(d.nid));
+    if (i>=0){ const n = nades[i]; scene.remove(n.group); nades.splice(i,1); nadeExplodeVis(n, d.x, d.y, d.z); }
+  }
   else if (d.k==='boomfx'){ explosionFX(d.x, d.y, d.z, .7); }
   else if (d.k==='barrel'){
     const b = barrels.get(d.id);
@@ -2218,6 +2272,160 @@ function boltsTick(dt){
     b.trailT -= dt;
     if (b.trailT <= 0){ b.trailT = 0.016; boltTrail(b); }
     if (b.left <= 0.01){ scene.remove(b.group); bolts.splice(i,1); }
+  }
+}
+
+/* ============================================================
+   屬性手雷：拋物線＋彈跳物理，爆炸造成屬性傷害並留下屬性區域
+   主機權威裁決傷害；各端各自模擬視覺（nid 對應去重）
+   ============================================================ */
+const nades = [];
+let nadeSeq = 0;
+function spawnNade(nid, srcIdx, p, v, auth){
+  const s = slots[srcIdx];
+  const el = s ? CHARS[s.char].el : 'fire';
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(.09,10,8),
+    new THREE.MeshStandardMaterial({color:0x2c3138, roughness:.4, metalness:.5}));
+  body.scale.y = 1.2; body.castShadow = true;
+  const band = new THREE.Mesh(new THREE.TorusGeometry(.085,.02,6,14),
+    new THREE.MeshStandardMaterial({color:EL[el].color, emissive:EL[el].color, emissiveIntensity:1}));
+  band.rotation.x = Math.PI/2;
+  g.add(body); g.add(band);
+  g.position.copy(p);
+  scene.add(g);
+  nades.push({nid:String(nid), src:srcIdx, el, group:g, band, v:v.clone(), fuse:2.2, auth:!!auth, trailT:0});
+}
+function nadesTick(dt){
+  for (let i=nades.length-1;i>=0;i--){
+    const n = nades[i], g = n.group, p = g.position;
+    n.v.y -= 16*dt;
+    p.addScaledVector(n.v, dt);
+    g.rotation.x += 6*dt; g.rotation.z += 4*dt;
+    if (p.y < .09){
+      p.y = .09;
+      if (Math.abs(n.v.y) > 1.5) n.v.y *= -.42; else n.v.y = 0;
+      n.v.x *= .62; n.v.z *= .62;
+    } else {
+      for (const c of colliders){
+        const r = .09;
+        if (p.x>c.x0-r && p.x<c.x1+r && p.z>c.z0-r && p.z<c.z1+r && p.y>c.y0 && p.y<c.y1){
+          const dx0=p.x-c.x0, dx1=c.x1-p.x, dz0=p.z-c.z0, dz1=c.z1-p.z;
+          const mn=Math.min(dx0,dx1,dz0,dz1);
+          if (mn===dx0){ p.x=c.x0-r; n.v.x=-Math.abs(n.v.x)*.5; }
+          else if (mn===dx1){ p.x=c.x1+r; n.v.x=Math.abs(n.v.x)*.5; }
+          else if (mn===dz0){ p.z=c.z0-r; n.v.z=-Math.abs(n.v.z)*.5; }
+          else { p.z=c.z1+r; n.v.z=Math.abs(n.v.z)*.5; }
+          break;
+        }
+      }
+    }
+    n.fuse -= dt;
+    // 引信將盡：屬性環急促閃爍
+    n.band.material.emissiveIntensity = n.fuse < 1 ? (Math.sin(now()*28)>0 ? 3 : .4) : 1;
+    n.trailT -= dt;
+    if (n.trailT <= 0){ n.trailT = .07;
+      spawnSmoke(p.x, p.y, p.z, {n:1, size:.15, color:0x9aa0a6, rise:.3, life:.5, grow:.3, opacity:.3, spread:.02}); }
+    if (n.fuse <= 0){
+      nadeExplodeVis(n, p.x, p.y, p.z);
+      if (n.auth && isHost){
+        hostNadeBoom(n.src, p.x, p.y, p.z);
+        bcast({t:'ev', k:'nboom', nid:n.nid, x:+p.x.toFixed(1), y:+p.y.toFixed(1), z:+p.z.toFixed(1)});
+      }
+      scene.remove(g); nades.splice(i,1);
+    }
+  }
+}
+function nadeExplodeVis(n, x, y, z){
+  explosionFX(x, y, z, 1.1);
+  sparkBurst(new THREE.Vector3(x, y+.4, z), EL[n.el].color, 16, 6);
+  // 衝擊波把自己震飛（本地物理，與油桶一致）
+  const dd = Math.hypot(me.pos.x-x, me.pos.z-z);
+  if (dd < 7 && !me.dead){
+    const a = Math.atan2(me.pos.z-z, me.pos.x-x);
+    const kb = (1-dd/7)*11;
+    me.vel.x += Math.cos(a)*kb; me.vel.z += Math.sin(a)*kb; me.vel.y += (1-dd/7)*5;
+  }
+}
+function localThrowNade(){
+  if (!started || me.dead || me.nades<=0) return false;
+  me.nades--;
+  const dir = new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(me.pitch, me.yaw, 0, 'YXZ'));
+  const p = new THREE.Vector3(me.pos.x, EYE()-.1, me.pos.z).addScaledVector(dir, .4);
+  const v = dir.multiplyScalar(15);
+  v.y += 4.5;
+  v.x += me.vel.x*.4; v.z += me.vel.z*.4;   // 繼承移動慣性
+  const nid = myIdx+'_'+(++nadeSeq);
+  spawnNade(nid, myIdx, p, v, isHost);
+  const pk = [+p.x.toFixed(2),+p.y.toFixed(2),+p.z.toFixed(2)];
+  const vk = [+v.x.toFixed(2),+v.y.toFixed(2),+v.z.toFixed(2)];
+  if (netMode==='host') bcast({t:'ev', k:'nade', i:myIdx, nid, p:pk, v:vk});
+  else if (netMode==='guest' && conns[0]) send(conns[0], {t:'nade', nid, p:pk, v:vk});
+  sfx('reload', .8);
+  return true;
+}
+function hostNadeBoom(srcIdx, x, y, z){
+  const s = slots[srcIdx]; if(!s) return;
+  const el = CHARS[s.char].el;
+  for (const o of slots){
+    if (o.ctrl==='empty' || !o.alive) continue;
+    const p = o.idx===myIdx ? me.pos : o.pos;
+    const d = Math.hypot(p.x-x, p.z-z);
+    if (d > 7) continue;
+    if (o.team === s.team){
+      if (el==='light') hostHeal(o, 35*(1-d/9));   // 光雷：友方範圍治療
+      continue;
+    }
+    const dmg = (el==='light'?42:58)*(1-d/9)*elemMult(el, CHARS[o.char].el);
+    if (el==='fire'){ o.fx.burn = Math.max(o.fx.burn, 2.5); o.fx.burnSrc = srcIdx; }
+    else if (el==='water'){ o.fx.slow = Math.max(o.fx.slow, 3); }
+    else if (el==='ice'){ o.fx.slow = Math.max(o.fx.slow, 3); o.fx.frz = Math.min(o.fx.frz+2, 2); o.fx.frzT = 4; }
+    else if (el==='thunder'){ o.fx.stun = Math.max(o.fx.stun, .6); }
+    else if (el==='earth'){ o.fx.stun = Math.max(o.fx.stun, .8); }
+    else if (el==='wood'){ o.fx.root = Math.max(o.fx.root, 1.8); }
+    else if (el==='dark'){ o.fx.blind = Math.max(o.fx.blind, 2.2); }
+    else if (el==='wind'){
+      const a = Math.atan2(p.z-z, p.x-x);
+      if (o.ctrl==='bot'){
+        o.pos.x = clamp(o.pos.x + Math.cos(a)*2.5, -57, 57);
+        o.pos.z = clamp(o.pos.z + Math.sin(a)*2.5, -57, 57);
+      } else {
+        const pe = {t:'ev', k:'push', i:o.idx, x:+(Math.cos(a)*9).toFixed(1), z:+(Math.sin(a)*9).toFixed(1), y:3};
+        bcast(pe); onGameEvent(pe);
+      }
+    }
+    hostDamage(o, dmg, s, false, '屬性手雷');
+  }
+  // 落點留下屬性區域（比子彈觸發的更大）
+  const zx = clamp(x, -56, 56), zz = clamp(z, -56, 56);
+  if (el==='fire') hostAddZone('fire', zx, zz, 2.6, 5, srcIdx);
+  else if (el==='water') hostAddZone('frost', zx, zz, 3, 5.5, srcIdx);
+  else if (el==='wood') hostAddZone('bramble', zx, zz, 2.8, 6, srcIdx);
+  else if (el==='metal') hostAddZone('shrapnel', zx, zz, 2.6, 5.5, srcIdx);
+  else if (el==='ice') hostAddZone('ice', zx, zz, 2.8, 5.5, srcIdx);
+  else if (el==='thunder') hostAddZone('shock', zx, zz, 2.6, 5, srcIdx);
+  else if (el==='wind') hostAddZone('gale', zx, zz, 2.8, 5, srcIdx);
+  else if (el==='dark') hostAddZone('gloom', zx, zz, 2.8, 5.5, srcIdx);
+  else if (el==='light') hostAddZone('sanct', zx, zz, 2.6, 5.5, srcIdx);
+  else if (el==='earth'){   // 土雷：轟出岩掩體（避開站位以免卡人）
+    let blocked = false;
+    for (const o of slots){
+      if (o.ctrl==='empty' || !o.alive) continue;
+      const p = o.idx===myIdx ? me.pos : o.pos;
+      if ((p.x-zx)**2 + (p.z-zz)**2 < 2.2){ blocked = true; break; }
+    }
+    if (!blocked){
+      const sp = srcIdx===myIdx ? me.pos : s.pos;
+      const wid = ++wallSeq;
+      const ev = {t:'ev', k:'mwall', wid, x:+zx.toFixed(1), z:+zz.toFixed(1),
+                  ry:+Math.atan2(zx-sp.x, zz-sp.z).toFixed(2)};
+      bcast(ev); onGameEvent(ev);
+      miniWallQueue.push(wid);
+      while (miniWallQueue.length > 8){
+        const old = miniWallQueue.shift();
+        if (wallsLive.has(old)){ bcast({t:'ev', k:'wallgone', id:old}); removeWall(old); }
+      }
+    }
   }
 }
 
@@ -2714,11 +2922,13 @@ for (const x of [-44,-28,-12,0,12,28,44]) for (const z of [-44,-28,-12,0,12,28,4
 NAV.push([0,12],[0,-12],[-10,0],[10,0]);
 
 function botThink(s, dt){
-  if (!s.bot) s.bot = {wp:null, aimErr:1, strafe:Math.random()*6, fireCd:0, thinkCd:0, reload:0, ammo:GUNS[s.gun].mag};
+  if (!s.bot) s.bot = {wp:null, aimErr:1, strafe:Math.random()*6, fireCd:0, thinkCd:0, reload:0, ammo:GUNS[s.gun].mag, nadeCd:rand(6,12)};
   const b = s.bot;
   const fx = s.fx;
   if (fx.stun>0 || fx.root>0){ s.moving=false; return; }
   b.thinkCd -= dt;
+  if (b.nadeCd===undefined) b.nadeCd = rand(6,12);
+  b.nadeCd -= dt;
 
   // 找目標
   let target=null, td=1e9;
@@ -2771,6 +2981,19 @@ function botThink(s, dt){
       b.fireCd = gat ? 0.09 : 60/g.rpm * (g.auto? rand(1.5,2.3) : rand(1.7,2.6));
       if (!gat){ b.ammo--; if (b.ammo<=0) b.reload = g.reload; }
       botShoot(s, target, td, gat ? GUNS[5] : g, gat);
+    }
+    // 手雷：中距離看得到目標時偶爾投擲
+    if (b.nadeCd<=0 && td>7 && td<26 && Math.random()<dt*0.5){
+      b.nadeCd = rand(10,18);
+      const p = new THREE.Vector3(s.pos.x, s.pos.y+1.5, s.pos.z);
+      const ndx = target.pos.x-s.pos.x, ndz = target.pos.z-s.pos.z, ndl = Math.hypot(ndx,ndz)||1;
+      const hv = Math.min(4 + ndl*0.45, 14);
+      const v = new THREE.Vector3(ndx/ndl*hv, 5.2, ndz/ndl*hv);
+      const nid = 'b'+s.idx+'_'+(++nadeSeq);
+      spawnNade(nid, s.idx, p, v, true);
+      bcast({t:'ev', k:'nade', i:s.idx, nid,
+        p:[+p.x.toFixed(1),+p.y.toFixed(1),+p.z.toFixed(1)],
+        v:[+v.x.toFixed(1),+v.y.toFixed(1),+v.z.toFixed(1)]});
     }
     // 技能
     if (s.skillCd<=0 && Math.random()<dt*0.25){ hostUseSkill(s.idx, {
@@ -3091,6 +3314,13 @@ function updateHUD(){
   // 暗系蝕明：黑幕吞噬視野
   const dov = $('darkOv');
   if (dov) dov.style.opacity = s.fx.blind>0 ? 1 : 0;
+  // 手雷數量
+  if (me.nades !== updateHUD._nades){
+    updateHUD._nades = me.nades;
+    const cn = $('chipNade'); if (cn) cn.textContent = 'G · 手雷 ×'+me.nades;
+    if (IS_TOUCH){ const bn = $('btnNadeT');
+      if (bn){ bn.textContent = '雷×'+me.nades; bn.style.opacity = me.nades>0 ? 1 : .38; } }
+  }
   const cu = $('chipUlt');
   cu.textContent = s.fx.gat>0 ? 'Q · 殲滅砲全開！' : (s.ult>=100 ? 'Q · 大招就緒！' : `Q · 大招 ${Math.floor(s.ult)}%`);
   cu.classList.toggle('charged', s.ult>=100 || s.fx.gat>0);
@@ -3121,6 +3351,7 @@ addEventListener('keydown', e=>{
   if (e.code==='KeyR') startReload();
   if (e.code==='KeyE') doSkill();
   if (e.code==='KeyQ') localUlt();
+  if (e.code==='KeyG') localThrowNade();
   if (e.code.startsWith('Digit')){
     const i = +e.code.slice(5)-1;
     if (i < GUN_COUNT && GUNS[i]) switchGun(i);
@@ -3277,6 +3508,10 @@ if (IS_TOUCH){
     if (!GUNS[me.gun].zoom) return false;   // 非狙擊槍：紅閃提示
     me.zoomed = !me.zoomed;
   });
+  bind('btnNadeT', ()=>{
+    if (me.dead || me.nades<=0) return false;   // 沒手雷：紅閃提示
+    localThrowNade();
+  });
 }
 addEventListener('mouseup', e=>{ if(e.button===0) mouseDownL=false; });
 addEventListener('contextmenu', e=> e.preventDefault());
@@ -3376,6 +3611,7 @@ function frame(){
   physTick(dt);
   smokeTick(dt);
   boltsTick(dt);
+  nadesTick(dt);
   decalsTick();
   specialsTick(dt);
   zoneVisTick();
