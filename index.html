@@ -115,6 +115,16 @@
   #elemtag{font-size:12px;letter-spacing:.1em;margin-top:4px}
   #centerMsg{position:absolute;left:50%;top:34%;transform:translateX(-50%);font-size:clamp(20px,3vw,34px);
     font-weight:900;letter-spacing:.3em;text-shadow:0 0 20px rgba(120,180,255,.8);opacity:0;transition:opacity .3s;text-align:center;line-height:1.6}
+  /* 擊殺確認：準星下方彈出骷髏＋分數 */
+  #killCf{position:absolute;left:50%;top:56%;transform:translateX(-50%);text-align:center;opacity:0;pointer-events:none}
+  #killCf .sk{font-size:30px;filter:drop-shadow(0 0 10px rgba(255,90,60,.9))}
+  #killCf .pt{font-size:17px;font-weight:900;color:#ffd54a;text-shadow:0 0 12px rgba(255,190,60,.9);letter-spacing:.08em}
+  #killCf.pop{animation:kcpop 1s ease forwards}
+  @keyframes kcpop{0%{opacity:0;transform:translateX(-50%) scale(.5)}12%{opacity:1;transform:translateX(-50%) scale(1.25)}
+    26%{transform:translateX(-50%) scale(1)}72%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-16px) scale(.95)}}
+  /* 雷大招：天幕壓暗 */
+  #skyDim{position:fixed;inset:0;z-index:8;pointer-events:none;opacity:0;transition:opacity .45s;
+    background:radial-gradient(ellipse at 50% -10%,rgba(60,20,110,.5),rgba(8,4,20,.72) 75%)}
 
   /* ===== 計分板 ===== */
   #board{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:15;
@@ -273,6 +283,7 @@
   </div>
   <div id="killfeed"></div>
   <div id="centerMsg"></div>
+  <div id="killCf"><div class="sk">☠</div><div class="pt"></div></div>
   <div id="bl">
     <div class="barwrap"><div class="barfill" id="hpfill" style="width:100%"></div><div class="barlabel" id="hplabel">HP 100</div></div>
     <div class="barwrap"><div class="barfill" id="ultfill" style="width:0%"></div><div class="barlabel">絕技能量</div></div>
@@ -290,6 +301,7 @@
 </div>
 <div id="vign"></div>
 <div id="darkOv"></div>
+<div id="skyDim"></div>
 <div id="netstat" class="hidden">連線中…</div>
 
 <div id="board" class="hidden">

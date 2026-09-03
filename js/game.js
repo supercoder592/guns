@@ -106,6 +106,24 @@ function sfx(kind, vol=1){
     src.connect(f); f.connect(g);
     g.gain.setValueAtTime(0.55*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+len);
     src.start(t);
+  } else if (kind==='kill'){
+    // 擊殺確認：上行雙音
+    for (const [f0,dtm] of [[660,0],[988,0.07]]){
+      const o = ac.createOscillator(); o.type='triangle';
+      const gg = ac.createGain(); gg.connect(ac.destination);
+      o.frequency.setValueAtTime(f0, t+dtm);
+      o.connect(gg);
+      gg.gain.setValueAtTime(0.0001, t+dtm);
+      gg.gain.exponentialRampToValueAtTime(0.22*vol, t+dtm+0.015);
+      gg.gain.exponentialRampToValueAtTime(0.001, t+dtm+0.16);
+      o.start(t+dtm); o.stop(t+dtm+0.18);
+    }
+  } else if (kind==='dink'){
+    // 爆頭清脆金屬聲
+    const o = ac.createOscillator(); o.type='square'; o.frequency.setValueAtTime(1568, t);
+    o.frequency.exponentialRampToValueAtTime(1244, t+0.05);
+    o.connect(g); g.gain.setValueAtTime(0.14*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.09);
+    o.start(t); o.stop(t+0.1);
   } else if (kind==='steam'){
     const len = 0.9;
     const buf = ac.createBuffer(1, ac.sampleRate*len, ac.sampleRate);
@@ -459,14 +477,44 @@ function buildTextures(){
   TEX.ground = makeCanvasTex((c,w,h)=>{
     c.fillStyle='#6e6a62'; c.fillRect(0,0,w,h);
     // 大面積色斑（柏油/沙土混合感）
-    for(let i=0;i<40;i++){
+    for(let i=0;i<70;i++){
       c.fillStyle=`hsla(${rand(30,45)},${rand(8,16)}%,${rand(36,46)}%,${rand(.15,.4)})`;
-      c.beginPath(); c.ellipse(Math.random()*w,Math.random()*h,rand(10,50),rand(8,36),Math.random()*3,0,7); c.fill();
+      c.beginPath(); c.ellipse(Math.random()*w,Math.random()*h,rand(16,90),rand(12,64),Math.random()*3,0,7); c.fill();
     }
-    noiseOver(c,w,h,0.08,1800);
-    c.strokeStyle='rgba(45,42,38,0.35)'; c.lineWidth=1.5;
-    c.strokeRect(0.5,0.5,w-1,h-1);
-  }, 256, 256, 26);
+    // 油漬（深色不規則斑）
+    for(let i=0;i<7;i++){
+      c.fillStyle=`rgba(28,26,24,${rand(.18,.38)})`;
+      const x=Math.random()*w, y=Math.random()*h;
+      for(let j=0;j<4;j++){ c.beginPath(); c.ellipse(x+rand(-16,16), y+rand(-12,12), rand(8,26), rand(6,18), Math.random()*3, 0, 7); c.fill(); }
+    }
+    // 裂縫（多段折線＋分岔）
+    c.strokeStyle='rgba(38,35,30,0.55)';
+    for(let i=0;i<10;i++){
+      c.lineWidth = rand(1,2.2);
+      let x=Math.random()*w, y=Math.random()*h;
+      c.beginPath(); c.moveTo(x,y);
+      const segs = 4+Math.floor(Math.random()*5);
+      for(let j=0;j<segs;j++){ x+=rand(-36,36); y+=rand(-28,28); c.lineTo(x,y);
+        if (Math.random()<.3){ c.moveTo(x,y); c.lineTo(x+rand(-18,18), y+rand(-14,14)); c.moveTo(x,y); } }
+      c.stroke();
+    }
+    noiseOver(c,w,h,0.08,5200);
+    c.strokeStyle='rgba(45,42,38,0.35)'; c.lineWidth=2;
+    c.strokeRect(1,1,w-2,h-2);
+  }, 512, 512, 26);
+  // 地面粗糙度變化圖（局部微光澤，配合環境反射）
+  {
+    const cv = document.createElement('canvas'); cv.width=cv.height=256;
+    const c = cv.getContext('2d');
+    c.fillStyle='#e6e6e6'; c.fillRect(0,0,256,256);
+    for(let i=0;i<26;i++){
+      c.fillStyle=`rgba(90,90,90,${rand(.25,.6)})`;
+      c.beginPath(); c.ellipse(Math.random()*256,Math.random()*256,rand(10,44),rand(8,30),Math.random()*3,0,7); c.fill();
+    }
+    TEX.groundRough = new THREE.CanvasTexture(cv);
+    TEX.groundRough.wrapS = TEX.groundRough.wrapT = THREE.RepeatWrapping;
+    TEX.groundRough.repeat.set(26,26);
+  }
   TEX.concrete = makeCanvasTex((c,w,h)=>{
     c.fillStyle='#8b8880'; c.fillRect(0,0,w,h);
     noiseOver(c,w,h,0.12,2000);
@@ -664,9 +712,19 @@ function buildWorld(){
 
   // 地面
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(160,160),
-    new THREE.MeshStandardMaterial({map:TEX.ground, roughness:0.94, metalness:0.02}));
+    new THREE.MeshStandardMaterial({map:TEX.ground, roughnessMap:TEX.groundRough, roughness:1.0, metalness:0.04}));
   ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
   scene.add(ground); worldMeshes.push(ground);
+  // 反光水窪（環境反射亮面）
+  const pudMat = new THREE.MeshStandardMaterial({color:0x3a444e, roughness:.05, metalness:.65,
+    transparent:true, opacity:.8, polygonOffset:true, polygonOffsetFactor:-1});
+  for (const [px,pz,pr] of [[-20,25,1.5],[14,-31,1.2],[31,19,1.4],[-37,-12,1.1],[8,45,1.7],[-45,31,1.2],[24,38,1.0],[-9,-45,1.4]]){
+    const pd = new THREE.Mesh(new THREE.CircleGeometry(pr, 22), pudMat);
+    pd.rotation.x = -Math.PI/2; pd.position.set(px, .015, pz);
+    pd.scale.x = rand(.7,1.3);
+    pd.receiveShadow = true;
+    scene.add(pd);
+  }
 
   const matBrick   = new THREE.MeshStandardMaterial({map:TEX.brick, roughness:0.9});
   const matConc    = new THREE.MeshStandardMaterial({map:TEX.concrete, roughness:0.92});
@@ -893,6 +951,25 @@ function buildWorld(){
       box(mrand(.5,.8), mrand(.35,.55), mrand(.5,.8), matRockP, cx+1.8, .25, cz+mrand(-.5,.5));
     }
   }
+  // 雜草叢（外圈與牆邊，純視覺無碰撞）
+  {
+    const grassMat = new THREE.MeshStandardMaterial({color:0x6b7a3f, roughness:.95});
+    const grassMat2 = new THREE.MeshStandardMaterial({color:0x556331, roughness:.95});
+    let placed = 0, guard = 0;
+    while (placed < 44 && guard++ < 300){
+      const gx = mrand(-55,55), gz = mrand(-55,55);
+      if (Math.max(Math.abs(gx), Math.abs(gz)) < 28) continue;   // 讓開中央戰區
+      const n = 3 + Math.floor(mrand(0,3));
+      for (let i=0;i<n;i++){
+        const bl = new THREE.Mesh(new THREE.ConeGeometry(mrand(.02,.045), mrand(.14,.34), 4),
+          mrand(0,1)<.5 ? grassMat : grassMat2);
+        bl.position.set(gx+mrand(-.28,.28), .08, gz+mrand(-.28,.28));
+        bl.rotation.set(mrand(-.35,.35), mrand(0,3), mrand(-.35,.35));
+        scene.add(bl);
+      }
+      placed++;
+    }
+  }
   // 廢墟旁瓦礫堆
   for (const [rx,rz] of [[-3.5,37],[4,43],[3.5,-37],[-4,-43],[-6,39],[6,-39]]){
     for (let i=0;i<3;i++)
@@ -975,41 +1052,81 @@ function nameSprite(name, teamCss, seeThrough){
   return s;
 }
 function makeAvatar(slot){
+  // 士兵模型 v2：分節四肢、戰術背心與彈袋、頭盔護目鏡、背包、屬性徽章、隊伍臂章
   const g = new THREE.Group();
   const team = slot.team, camo = team==='red' ? TEX.camoR : TEX.camoB;
   const e = EL[CHARS[slot.char].el];
   const matBody = new THREE.MeshStandardMaterial({map:camo, roughness:.85});
   const matSkin = new THREE.MeshStandardMaterial({color:0xd7a684, roughness:.7});
-  const matGear = new THREE.MeshStandardMaterial({color:0x22252a, roughness:.6, metalness:.3});
-  const matElem = new THREE.MeshStandardMaterial({color:e.color, emissive:e.color, emissiveIntensity:.8, roughness:.4});
+  const matGear = new THREE.MeshStandardMaterial({color:0x22252a, roughness:.55, metalness:.25});
+  const matGear2= new THREE.MeshStandardMaterial({color:0x31383f, roughness:.65, metalness:.12});
+  const matBoot = new THREE.MeshStandardMaterial({color:0x16171b, roughness:.92});
+  const matElem = new THREE.MeshStandardMaterial({color:e.color, emissive:e.color, emissiveIntensity:.9, roughness:.4});
+  const matTeam = new THREE.MeshStandardMaterial({color: team==='red'?0xd84438:0x3f8fe0, roughness:.7});
 
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(.17,.82,.19), matBody); legL.position.set(-.115,.41,0);
-  const legR = legL.clone(); legR.position.x=.115;
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(.48,.62,.27), matBody); torso.position.y=1.13;
-  const vest = new THREE.Mesh(new THREE.BoxGeometry(.5,.42,.3), matGear); vest.position.y=1.16;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(.155,12,10), matSkin); head.position.y=1.62;
-  const helm = new THREE.Mesh(new THREE.SphereGeometry(.175,12,8,0,Math.PI*2,0,Math.PI/2), matBody); helm.position.y=1.64;
-  const padL = new THREE.Mesh(new THREE.BoxGeometry(.1,.08,.2), matElem); padL.position.set(-.3,1.4,0);
-  const padR = padL.clone(); padR.position.x=.3;
-  const armR = new THREE.Mesh(new THREE.BoxGeometry(.13,.13,.5), matBody); armR.position.set(.2,1.28,.28);
-  const gun = new THREE.Mesh(new THREE.BoxGeometry(.08,.12,.72), matGear); gun.position.set(.12,1.3,.5);
-  for (const m of [legL,legR,torso,vest,head,helm,padL,padR,armR,gun]){ m.castShadow=true; m.receiveShadow=true; g.add(m); }
-  head.userData = {slot:slot.idx, part:'head'};
-  torso.userData = {slot:slot.idx, part:'body'};
-  vest.userData = {slot:slot.idx, part:'body'};
-  legL.userData = {slot:slot.idx, part:'body'};
-  legR.userData = {slot:slot.idx, part:'body'};
+  const parts = [];
+  const P = (mesh, part)=>{
+    mesh.castShadow = mesh.receiveShadow = true;
+    if (part){ mesh.userData = {slot:slot.idx, part}; parts.push(mesh); }
+    g.add(mesh); return mesh;
+  };
+  // ---- 腿：髖部樞紐群組（大腿+護膝+小腿+軍靴），行走時整條腿擺動 ----
+  const mkLeg = side=>{
+    const lg = new THREE.Group(); lg.position.set(.115*side, .92, 0);
+    const add = (mesh, part)=>{ mesh.castShadow = mesh.receiveShadow = true;
+      if (part){ mesh.userData = {slot:slot.idx, part}; parts.push(mesh); } lg.add(mesh); return mesh; };
+    const thigh = add(new THREE.Mesh(new THREE.BoxGeometry(.17,.44,.2), matBody), 'body'); thigh.position.y = -.22;
+    const knee  = add(new THREE.Mesh(new THREE.BoxGeometry(.15,.1,.17), matGear2)); knee.position.set(0,-.46,.03);
+    const shin  = add(new THREE.Mesh(new THREE.CylinderGeometry(.068,.06,.4,8), matGear2), 'body'); shin.position.y = -.66;
+    const boot  = add(new THREE.Mesh(new THREE.BoxGeometry(.15,.11,.27), matBoot), 'body'); boot.position.set(0,-.88,.045);
+    g.add(lg); return lg;
+  };
+  const legL = mkLeg(-1), legR = mkLeg(1);
+  // ---- 軀幹：腰帶/軀體/戰術背心/彈袋/背包/背後屬性徽章 ----
+  const hip   = P(new THREE.Mesh(new THREE.BoxGeometry(.4,.15,.24), matGear), 'body'); hip.position.y = .97;
+  const torso = P(new THREE.Mesh(new THREE.BoxGeometry(.46,.5,.26), matBody), 'body'); torso.position.y = 1.28;
+  const vest  = P(new THREE.Mesh(new THREE.BoxGeometry(.48,.4,.3), matGear), 'body'); vest.position.y = 1.3;
+  for (let i=0;i<3;i++){
+    const pouch = P(new THREE.Mesh(new THREE.BoxGeometry(.1,.13,.05), matGear2));
+    pouch.position.set(-.14+i*.14, 1.19, .175);
+  }
+  const bpack = P(new THREE.Mesh(new THREE.BoxGeometry(.34,.36,.14), matGear2), 'body'); bpack.position.set(0,1.32,-.2);
+  const emblem = P(new THREE.Mesh(new THREE.BoxGeometry(.15,.15,.02), matElem)); emblem.position.set(0,1.38,-.285);
+  // ---- 肩甲（屬性色）與臂章（隊色） ----
+  const padL = P(new THREE.Mesh(new THREE.BoxGeometry(.15,.09,.21), matElem)); padL.position.set(-.31,1.52,0);
+  const padR = P(new THREE.Mesh(new THREE.BoxGeometry(.15,.09,.21), matElem)); padR.position.set(.31,1.52,0);
+  const band = P(new THREE.Mesh(new THREE.BoxGeometry(.15,.08,.16), matTeam)); band.position.set(.3,1.42,.01);
+  // ---- 手臂：持槍姿勢（右手托握把、左手橫抓護木） ----
+  const armRU = P(new THREE.Mesh(new THREE.BoxGeometry(.13,.32,.14), matBody), 'body');
+  armRU.position.set(.28,1.37,.1); armRU.rotation.x = -.9;
+  const armRF = P(new THREE.Mesh(new THREE.BoxGeometry(.11,.27,.12), matSkin));
+  armRF.position.set(.25,1.28,.34); armRF.rotation.x = -1.5;
+  const armLU = P(new THREE.Mesh(new THREE.BoxGeometry(.13,.3,.14), matBody), 'body');
+  armLU.position.set(-.28,1.39,.12); armLU.rotation.set(-.9,0,-.5);
+  const armLF = P(new THREE.Mesh(new THREE.BoxGeometry(.1,.26,.11), matSkin));
+  armLF.position.set(-.1,1.3,.38); armLF.rotation.set(-1.4,0,-.6);
+  // ---- 槍（依所持武器調整長度）＋彈匣 ----
+  const gun = P(new THREE.Mesh(new THREE.BoxGeometry(.07,.11,.72), matGear));
+  gun.position.set(.1,1.33,.42);
+  const mag = P(new THREE.Mesh(new THREE.BoxGeometry(.05,.15,.07), matGear2));
+  mag.position.set(.1,1.23,.4); mag.rotation.x = .25;
+  // ---- 頭部：頸/頭/頭盔/盔沿/護目鏡 ----
+  const neck = P(new THREE.Mesh(new THREE.CylinderGeometry(.06,.075,.09,8), matSkin)); neck.position.y = 1.57;
+  const head = P(new THREE.Mesh(new THREE.SphereGeometry(.15,12,10), matSkin), 'head'); head.position.y = 1.69;
+  const helm = P(new THREE.Mesh(new THREE.SphereGeometry(.175,12,8,0,Math.PI*2,0,Math.PI/1.85), matBody), 'head'); helm.position.y = 1.71;
+  const brim = P(new THREE.Mesh(new THREE.BoxGeometry(.3,.03,.1), matBody)); brim.position.set(0,1.72,.16);
+  const gog  = P(new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.03), matGear)); gog.position.set(0,1.7,.15);
   // 隊友名牌可透視、敵方名牌會被牆擋住（避免穿牆透視）
   const isAlly = slots[myIdx] && slot.team === slots[myIdx].team;
-  const np = nameSprite(slot.name, team==='red'?'#ff8a7e':'#8ec4ff', isAlly); np.position.y=2.12; g.add(np);
+  const np = nameSprite(slot.name, team==='red'?'#ff8a7e':'#8ec4ff', isAlly); np.position.y=2.2; g.add(np);
   // 血條
   const hcv = document.createElement('canvas'); hcv.width=128; hcv.height=14;
   const htex = new THREE.CanvasTexture(hcv);
   const hbar = new THREE.Sprite(new THREE.SpriteMaterial({map:htex, depthTest:!isAlly, transparent:true}));
-  hbar.scale.set(1.1,.12,1); hbar.position.y=1.92; g.add(hbar);
+  hbar.scale.set(1.1,.12,1); hbar.position.y=2.0; g.add(hbar);
   g.visible = false;
   scene.add(g);
-  slot.avatar = {group:g, legL, legR, head, torso, vest, gunM:gun, parts:[head,torso,vest,legL,legR], hcv, htex, walk:0, lastHp:-1};
+  slot.avatar = {group:g, legL, legR, head, torso, vest, gunM:gun, parts, hcv, htex, walk:0, lastHp:-1};
   updateHpBar(slot);
 }
 function updateHpBar(slot){
@@ -1870,15 +1987,23 @@ function hostUseUlt(idx){
 function onGameEvent(d){
   if (d.k==='kill'){
     const a = slots[d.a], v = slots[d.v];
+    const ag = a ? `<span style="color:${EL[CHARS[a.char].el].css};font-family:serif;font-weight:900">${EL[CHARS[a.char].el].glyph}</span> ` : '';
     const an = a? `<b style="color:${a.team==='red'?'#ff8a7e':'#8ec4ff'}">${a.name}</b>` : '戰場';
     const vn = `<b style="color:${v.team==='red'?'#ff8a7e':'#8ec4ff'}">${v.name}</b>`;
-    feed(`${an} ${d.hs?'💀爆頭':'✖'} ${vn}`);
+    feed(`${ag}${an} ${d.hs?'💀爆頭':'✖'} ${vn}`);
     if (!isHost){ // 來賓端同步計分（主機端已在 hostKill 累計）
       if (a){ a.kills++; a.score += d.pts||0; a.streak = d.st||0; }
       v.deaths++; v.streak = 0;
     }
     v.alive = false; v.hp = 0;
-    if (v.avatar){ v.avatar.group.visible = false; }
+    if (v.avatar){   // 死亡倒地動畫：身體向後倒下再消失
+      v._dieT = now() + .9;
+      const grp = v.avatar.group;
+      addSpecial(.85, (dt,k)=>{
+        grp.rotation.x = -Math.PI/2 * Math.min(1, k*1.6);
+        grp.position.y = Math.max(0, v.pos.y - k*.1);
+      }, ()=>{ grp.rotation.x = 0; grp.position.y = v.pos.y; grp.visible = false; });
+    }
     deathPuff(v.pos, v.team);
     if (d.v === myIdx){
       me.dead = true;
@@ -1890,7 +2015,12 @@ function onGameEvent(d){
     if (d.a === myIdx){
       const st = d.st || slots[myIdx].streak;
       if (st>=2) centerMsg(st>=5?'超 神！':st>=4?'四連殺！':st>=3?'三連殺！':'雙殺！');
-      sfx('hit');
+      // 擊殺確認演出：骷髏彈出＋分數＋確認音
+      const kc = $('killCf');
+      kc.querySelector('.sk').textContent = d.hs ? '💀' : '☠';
+      kc.querySelector('.pt').textContent = '+'+(d.pts||100)+(d.hs?' 爆頭':'');
+      kc.classList.remove('pop'); void kc.offsetWidth; kc.classList.add('pop');
+      sfx('kill', .9);
     }
   }
   else if (d.k==='skill'){
@@ -1983,7 +2113,7 @@ function onGameEvent(d){
       spikeBurst(d.p[0], d.p[2], 0xd8f2ff, 24, 4, 26, 2.8);  // 全場冰晶
       spawnSmoke(d.p[0], .6, d.p[2], {n:16, size:2.6, color:0xe8f6ff, rise:1.2, life:2.4, grow:1.5, opacity:.6, spread:8});
     }
-    if (c.el==='thunder'){ shakeCam(.4); sfx('zap'); }        // 天雷由 boltset 事件呈現
+    if (c.el==='thunder'){ shakeCam(.4); sfx('zap'); thunderSkyFX(); }   // 天幕壓暗＋天際電弧；落雷由 boltset 呈現
   }
   else if (d.k==='wallgone'){ removeWall(d.id); }
   else if (d.k==='mwall'){ spawnMiniWall(d.wid, d.x, d.z, d.ry); }
@@ -2647,32 +2777,74 @@ function elemHitFX(p, el){
   }
 }
 
-function windVortexFX(x, z){ // 風大招：旋捲上升的龍捲氣旋
+function windVortexFX(x, z){ // 風大招：擎天龍捲——氣旋風縷＋捲入的碎屑＋基座塵環
   const group = new THREE.Group();
-  const streaks = [];
+  const streaks = [], junk = [];
   const mat = new THREE.MeshBasicMaterial({color:0xd8fff0, transparent:true, opacity:.55,
     blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide});
-  for (let i=0;i<16;i++){
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(rand(1.2,2.4), rand(.12,.3)), mat);
-    m.userData = {a:Math.random()*Math.PI*2, r:rand(1,5), h:rand(.3,7), w:rand(2.5,4.5)};
+  for (let i=0;i<26;i++){
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(rand(1.3,2.8), rand(.12,.32)), mat);
+    m.userData = {a:Math.random()*Math.PI*2, r:rand(1,6), h:rand(.3,11), w:rand(2.5,4.8)};
     group.add(m); streaks.push(m);
+  }
+  // 被捲上天的碎屑（木屑/砂石）
+  for (let i=0;i<9;i++){
+    const m = new THREE.Mesh(debrisGeo,
+      new THREE.MeshStandardMaterial({color:[0x8a6a3c,0x6e6a62,0x4a4a44][i%3], roughness:.9, transparent:true}));
+    const s = rand(.08,.2);
+    m.scale.set(s,s,s); m.castShadow = true;
+    m.userData = {a:Math.random()*Math.PI*2, r:rand(1.5,4.5), h:rand(.5,10), w:rand(3,6)};
+    group.add(m); junk.push(m);
   }
   group.position.set(x, 0, z);
   scene.add(group);
-  addSpecial(3.2, (dt,k)=>{
-    const fade = k>.75 ? 1-(k-.75)/.25 : 1;
+  addSpecial(4.2, (dt,k)=>{
+    const fade = k>.78 ? 1-(k-.78)/.22 : 1;
     mat.opacity = .55*fade;
     for (const m of streaks){
       const u = m.userData;
-      u.a += u.w*dt; u.h += 2.2*dt; if (u.h > 9) u.h -= 9;
-      const r = u.r * (0.35 + u.h/9);
+      u.a += u.w*dt; u.h += 2.6*dt; if (u.h > 13) u.h -= 13;
+      const r = u.r * (0.3 + u.h/13);
       m.position.set(Math.cos(u.a)*r, u.h, Math.sin(u.a)*r);
       m.rotation.y = -u.a;
     }
-    if (Math.random()<.5) spawnSmoke(x+rand(-2,2), rand(0,1), z+rand(-2,2),
-      {n:1, size:1, color:0xe4fff5, rise:3, life:.8, grow:.9, opacity:.35, spread:.3});
+    for (const m of junk){
+      const u = m.userData;
+      u.a += u.w*dt; u.h += 1.8*dt; if (u.h > 11) u.h -= 11;
+      const r = u.r * (0.35 + u.h/11);
+      m.position.set(Math.cos(u.a)*r, u.h, Math.sin(u.a)*r);
+      m.rotation.x += 5*dt; m.rotation.z += 4*dt;
+      m.material.opacity = fade;
+    }
+    if (k < .8) shakeCam(.05);   // 持續低頻震動
+    if (Math.random()<.6) spawnSmoke(x+rand(-2.5,2.5), rand(0,1.2), z+rand(-2.5,2.5),
+      {n:1, size:1.1, color:0xe4fff5, rise:3.4, life:.8, grow:.9, opacity:.35, spread:.3});
+    if (Math.random()<.5){   // 基座塵環向外翻滾
+      const a = Math.random()*Math.PI*2;
+      spawnSmoke(x+Math.cos(a)*rand(3,5.5), .3, z+Math.sin(a)*rand(3,5.5),
+        {n:1, size:1.4, color:0xb8ab90, rise:.5, life:1.1, grow:1.3, opacity:.45, spread:.3,
+         vx:Math.cos(a)*2.2, vz:Math.sin(a)*2.2});
+    }
   }, ()=> scene.remove(group));
   sfx('steam', 1);
+}
+function thunderSkyFX(){ // 雷大招：天幕壓暗＋橫貫天際的巨型電弧＋悶雷
+  const dim = $('skyDim');
+  if (dim){
+    dim.style.opacity = 1;
+    setTimeout(()=>{ dim.style.opacity = 0; }, 2600);
+  }
+  const c = camera ? camera.position : {x:0, z:0};
+  const strike = ()=>{
+    if (!started) return;
+    const a1 = Math.random()*Math.PI*2, a2 = a1 + rand(1.5, 3);
+    const p1 = new THREE.Vector3(c.x+Math.cos(a1)*rand(20,40), rand(24,34), c.z+Math.sin(a1)*rand(20,40));
+    const p2 = new THREE.Vector3(c.x+Math.cos(a2)*rand(20,40), rand(22,32), c.z+Math.sin(a2)*rand(20,40));
+    arcLine(p1, p2, 2.2, 0xc084fc);
+    arcLine(p1, p2, 0.9, 0xffffff);
+    sfx('boom', .5); shakeCam(.15);
+  };
+  for (let i=0;i<5;i++) setTimeout(strike, i*420 + rand(0,180));
 }
 function darkNovaFX(x, z){ // 暗大招：吞噬光明的黑暗新星
   const mat = new THREE.MeshBasicMaterial({color:0x07030e, transparent:true, opacity:.75, depthWrite:false});
@@ -3133,7 +3305,7 @@ function avatarStatusFX(s, a){
         sp.scale.set(.17,.17,1);
         a.stunFX.add(sp);
       }
-      a.stunFX.position.y = 1.95;
+      a.stunFX.position.y = 2.05;
       a.group.add(a.stunFX);
     }
     a.stunFX.visible = true;
@@ -3509,6 +3681,7 @@ function showHitmark(hs){
   const h = $('hitmark');
   h.style.opacity = 1;
   h.querySelectorAll('span').forEach(s=> s.style.background = hs?'#ff5a4e':'#fff');
+  if (hs) sfx('dink', .8);   // 爆頭「叮」
   clearTimeout(h._t); h._t = setTimeout(()=> h.style.opacity=0, 90);
 }
 function hurtFeedback(){
@@ -3838,9 +4011,9 @@ function frame(){
   for (const s of slots){
     if (s.ctrl==='empty' || s.idx===myIdx || !s.avatar) continue;
     const a = s.avatar;
-    // 匿蹤者對敵隊隱形（隊友仍可見）
+    // 匿蹤者對敵隊隱形（隊友仍可見）；死亡後倒地動畫期間仍可見
     const hiddenFromMe = s.fx.stealth>0 && slots[myIdx] && s.team!==slots[myIdx].team;
-    a.group.visible = s.alive && !hiddenFromMe;
+    a.group.visible = (s.alive || (s._dieT||0) > now()) && !hiddenFromMe;
     if (!s.alive) continue;
     if (!isHost && s._tp){
       s.pos.lerp(s._tp, Math.min(1, dt*12));
