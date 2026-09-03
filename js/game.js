@@ -2815,7 +2815,7 @@ function switchGun(i){
 function updateTouchGunUI(){
   if (!IS_TOUCH) return;
   const zb = $('btnZoomT');
-  if (zb) zb.style.display = GUNS[me.gun].zoom ? '' : 'none';   // 鏡鈕只在狙擊時顯示
+  if (zb) zb.style.opacity = GUNS[me.gun].zoom ? 1 : .45;   // 鏡鈕常駐，非狙擊時變暗
   const gb = $('btnGunT');
   if (gb) gb.textContent = ['手槍','衝鋒','突擊','霰彈','狙擊'][me.gun] || '換槍';
 }
@@ -2954,7 +2954,10 @@ if (IS_TOUCH){
     touchJump = now();   // 排隊 0.4 秒內有效，不會被幀間吃掉
   });
   bind('btnGunT', ()=> switchGun((me.gun+1)%GUN_COUNT));
-  bind('btnZoomT', ()=>{ me.zoomed = !me.zoomed && GUNS[me.gun].zoom; });
+  bind('btnZoomT', ()=>{
+    if (!GUNS[me.gun].zoom) return false;   // 非狙擊槍：紅閃提示
+    me.zoomed = !me.zoomed;
+  });
 }
 addEventListener('mouseup', e=>{ if(e.button===0) mouseDownL=false; });
 addEventListener('contextmenu', e=> e.preventDefault());
