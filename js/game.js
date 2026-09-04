@@ -62,7 +62,27 @@ if (IS_TOUCH) document.body.classList.add('touch');
 
 /* ------------------------- 音效（WebAudio 合成） ------------------------- */
 let AC = null;
-function audio(){ if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return AC; }
+function audio(){
+  if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  // iOS/Android：AudioContext 在手勢外建立會停在 suspended，需持續嘗試 resume
+  if (AC && AC.state === 'suspended'){ try{ AC.resume(); }catch(e){} }
+  return AC;
+}
+// 手機音訊解鎖：首次觸控/點擊時 resume 並播一格靜音（舊版 iOS 需要）
+function unlockAudio(){
+  const ac = audio();
+  if (!ac) return;
+  if (!unlockAudio._done && ac.state !== 'suspended'){
+    unlockAudio._done = true;
+    try{
+      const b = ac.createBuffer(1, 1, 22050);
+      const s = ac.createBufferSource(); s.buffer = b;
+      s.connect(ac.destination); s.start(0);
+    }catch(e){}
+  }
+}
+addEventListener('touchend', unlockAudio, {passive:true});
+addEventListener('pointerdown', unlockAudio, {passive:true});
 function sfx(kind, vol=1){
   const ac = audio(); if(!ac) return;
   const t = ac.currentTime;
@@ -106,6 +126,33 @@ function sfx(kind, vol=1){
     src.connect(f); f.connect(g);
     g.gain.setValueAtTime(0.55*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+len);
     src.start(t);
+  } else if (kind==='step'){
+    // 腳步：短促低頻沙聲
+    const len = 0.06;
+    const buf = ac.createBuffer(1, ac.sampleRate*len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/d.length, 2.5);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type='lowpass'; f.frequency.value = 420 + Math.random()*160;
+    src.connect(f); f.connect(g);
+    g.gain.setValueAtTime(0.1*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+len);
+    src.start(t);
+  } else if (kind==='land'){
+    // 落地悶響
+    const len = 0.16;
+    const buf = ac.createBuffer(1, ac.sampleRate*len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/d.length, 1.8);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type='lowpass'; f.frequency.value = 260;
+    src.connect(f); f.connect(g);
+    g.gain.setValueAtTime(0.4*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+len);
+    src.start(t);
+  } else if (kind==='click'){
+    // 空彈匣/機械喀噠
+    const o = ac.createOscillator(); o.type='square'; o.frequency.setValueAtTime(2100, t);
+    o.connect(g); g.gain.setValueAtTime(0.08*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.03);
+    o.start(t); o.stop(t+0.035);
   } else if (kind==='kill'){
     // 擊殺確認：上行雙音
     for (const [f0,dtm] of [[660,0],[988,0.07]]){
@@ -951,24 +998,33 @@ function buildWorld(){
       box(mrand(.5,.8), mrand(.35,.55), mrand(.5,.8), matRockP, cx+1.8, .25, cz+mrand(-.5,.5));
     }
   }
-  // 雜草叢（外圈與牆邊，純視覺無碰撞）
+  // 雜草叢（外圈與牆邊，純視覺無碰撞）— InstancedMesh 一次繪製，手機效能友善
   {
-    const grassMat = new THREE.MeshStandardMaterial({color:0x6b7a3f, roughness:.95});
-    const grassMat2 = new THREE.MeshStandardMaterial({color:0x556331, roughness:.95});
-    let placed = 0, guard = 0;
-    while (placed < 44 && guard++ < 300){
+    const grassGeo = new THREE.ConeGeometry(1, 1, 4);
+    const grassMat = new THREE.MeshStandardMaterial({color:0xffffff, roughness:.95});
+    const N = 190;
+    const inst = new THREE.InstancedMesh(grassGeo, grassMat, N);
+    const dummy = new THREE.Object3D();
+    const c1 = new THREE.Color(0x6b7a3f), c2 = new THREE.Color(0x556331);
+    let idx = 0, guard = 0;
+    while (idx < N && guard++ < 900){
       const gx = mrand(-55,55), gz = mrand(-55,55);
       if (Math.max(Math.abs(gx), Math.abs(gz)) < 28) continue;   // 讓開中央戰區
       const n = 3 + Math.floor(mrand(0,3));
-      for (let i=0;i<n;i++){
-        const bl = new THREE.Mesh(new THREE.ConeGeometry(mrand(.02,.045), mrand(.14,.34), 4),
-          mrand(0,1)<.5 ? grassMat : grassMat2);
-        bl.position.set(gx+mrand(-.28,.28), .08, gz+mrand(-.28,.28));
-        bl.rotation.set(mrand(-.35,.35), mrand(0,3), mrand(-.35,.35));
-        scene.add(bl);
+      for (let i=0;i<n && idx<N;i++){
+        const sy = mrand(.14,.34);
+        dummy.position.set(gx+mrand(-.28,.28), sy*.35, gz+mrand(-.28,.28));
+        dummy.rotation.set(mrand(-.35,.35), mrand(0,3), mrand(-.35,.35));
+        dummy.scale.set(mrand(.04,.09), sy, mrand(.04,.09));
+        dummy.updateMatrix();
+        inst.setMatrixAt(idx, dummy.matrix);
+        inst.setColorAt(idx, mrand(0,1)<.5 ? c1 : c2);
+        idx++;
       }
-      placed++;
     }
+    inst.count = idx;
+    inst.receiveShadow = true;
+    scene.add(inst);
   }
   // 廢墟旁瓦礫堆
   for (const [rx,rz] of [[-3.5,37],[4,43],[3.5,-37],[-4,-43],[-6,39],[6,-39]]){
@@ -1230,7 +1286,9 @@ function updateLocal(dt){
   me.vel.y -= 15*dt;
   const jumpQueued = touchJump > 0 && now()-touchJump < 0.4;
   if ((keys.Space || jumpQueued) && me.onGround && !rooted){ me.vel.y = 5.6; me.onGround=false; touchJump = 0; }
+  const wasAir = !me.onGround, fallV = me.vel.y;
   me.onGround = collideMove(me.pos, me.vel, dt);
+  if (wasAir && me.onGround && fallV < -5) sfx('land', clamp(-fallV/12, .3, 1));   // 落地悶響
   me.pos.x = clamp(me.pos.x, -58, 58);
   me.pos.z = clamp(me.pos.z, -58, 58);
 
@@ -1240,6 +1298,11 @@ function updateLocal(dt){
 
   // 攝影機
   me.bobT += dt * (slot.moving ? (keys.ShiftLeft?11:8) : 2);
+  // 腳步聲：與步伐週期同步（每半個 bob 週期一步）
+  if (slot.moving && me.onGround){
+    const ph = Math.floor(me.bobT / Math.PI);
+    if (ph !== me._stepPh){ me._stepPh = ph; sfx('step', sprinting ? .45 : .3); }
+  }
   const bob = slot.moving ? Math.sin(me.bobT)*0.025 : 0;
   camera.position.set(me.pos.x, EYE()+bob, me.pos.z);
   camera.rotation.set(0,0,0);
@@ -1302,7 +1365,11 @@ function shootTargets(){
 function tryFire(){
   const gat = slots[myIdx].fx.gat > 0;             // 萬刃殲滅砲形態
   const g = gat ? GUNS[5] : GUNS[me.gun];
-  if (me.fireCd > 0 || (!gat && me.reloading>0)) return;
+  if (!gat && me.reloading>0){   // 換彈中按扳機：機械空響提示
+    if (now() - (tryFire._ck||0) > .3){ tryFire._ck = now(); sfx('click', .7); }
+    return;
+  }
+  if (me.fireCd > 0) return;
   if (!gat && me.ammo <= 0){ startReload(); return; }
   me.fireCd = 60/g.rpm;
   if (!gat) me.ammo--;
@@ -3811,6 +3878,7 @@ function switchGun(i){
   if (i===me.gun) return;
   me.gun=i; me.ammo=GUNS[i].mag; me.reloading=0; me.zoomed=false;
   vmDraw = 1;   // 舉槍動畫
+  sfx('click', .9);
   rebuildViewmodel(); updateAmmoUI(); updateTouchGunUI();
 }
 function updateTouchGunUI(){

@@ -13,7 +13,10 @@
   html,body{width:100%;height:100%;overflow:hidden;background:#0a0c10;color:#e9edf3;
     font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif}
   #c3d{position:fixed;inset:0;display:block}
-  .overlay{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  /* 內容超出視窗時仍可完整捲動（flex 置中溢出會裁掉頂端，改用 auto margin 置中） */
+  .overlay{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+  .overlay > :first-child{margin-top:auto}
+  .overlay > :last-child{margin-bottom:auto}
   .hidden{display:none!important}
   button{font-family:inherit;cursor:pointer}
   input{font-family:inherit}
@@ -57,7 +60,14 @@
   .cbtn.sel{background:rgba(255,255,255,.12);transform:translateY(-3px);border-color:currentColor;box-shadow:0 6px 18px -4px currentColor}
 
   /* ===== 房間 ===== */
-  #room{background:linear-gradient(rgba(6,8,12,.82),rgba(6,8,12,.94)),radial-gradient(ellipse at 50% 20%,#1a2434 0%,#07090d 70%);overflow-y:auto;padding:24px}
+  #room{background:linear-gradient(rgba(6,8,12,.82),rgba(6,8,12,.94)),radial-gradient(ellipse at 50% 20%,#1a2434 0%,#07090d 70%);overflow-y:auto;padding:24px 16px}
+  @media (max-height:760px){   /* 手機直向/矮視窗：房間排版緊縮，屬性列必定看得到 */
+    #room{padding:14px 10px}
+    #roomCode{font-size:26px}
+    .teams{margin:10px 0;gap:10px}
+    .teamcol{padding:10px}
+    .slot{padding:7px 10px;margin-bottom:6px;font-size:13px;min-height:38px}
+  }
   #roomCode{font-size:38px;font-weight:900;letter-spacing:.35em;color:#ffd54a;cursor:pointer;
     text-shadow:0 0 22px rgba(255,213,74,.45)}
   .teams{display:flex;gap:22px;margin:22px 0;flex-wrap:wrap;justify-content:center}
