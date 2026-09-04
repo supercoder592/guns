@@ -932,7 +932,7 @@ function buildWorld(){
   // 一般油桶
   const barrelG = new THREE.CylinderGeometry(0.42,0.42,1.1,10);
   const bmat = new THREE.MeshStandardMaterial({color:0x6a6f5a, roughness:.6, metalness:.3});
-  for (const [x,z] of [[-10,-6],[12,12],[-20,-20],[22,-14],[-32,4],[34,6]]){
+  for (const [x,z] of [[-10,-6],[12,12],[-20,-20],[26,-9],[-32,4],[34,6]]){   // (22,-14)→(26,-9) 讓開天橋東梯
     const m = new THREE.Mesh(barrelG, bmat); m.position.set(x,.55,z);
     m.castShadow=m.receiveShadow=true; scene.add(m); worldMeshes.push(m);
     addCollider(x,z,0.9,0.9,1.1);
@@ -940,7 +940,8 @@ function buildWorld(){
   // 可引爆油桶（紅桶，打爆造成範圍傷害與衝擊波、可連鎖）
   const rmat = new THREE.MeshStandardMaterial({color:0xb03428, roughness:.5, metalness:.3});
   const smat = new THREE.MeshStandardMaterial({color:0xf2e28a, emissive:0x664410, emissiveIntensity:.4, roughness:.5});
-  const bpos = [[-14,-2],[16,10],[-6,26],[6,-28],[-37,21],[38,-14],[-24,-34],[26,34],[44,10]];
+  const bpos = [[-14,-2],[16,10],[-6,26],[6,-28],[-37,21],[38,-14],[-24,-34],[26,34],[44,10],
+                [0,-17],[44,43],[-33,-43]];   // 天橋下/貨櫃迷宮/水塔旁
   bpos.forEach(([x,z], i)=>{
     const id = i+1;
     const m = new THREE.Mesh(barrelG, rmat); m.position.set(x,.55,z);
@@ -975,7 +976,7 @@ function buildWorld(){
   const mrand = (a,b)=>{ mseed = (mseed*1664525 + 1013904223)>>>0; return a + (mseed/4294967296)*(b-a); };
   const matRockP = new THREE.MeshStandardMaterial({map:TEX.rock, roughness:.95});
   const clusters = [
-    [-22,14],[22,-16],[-8,12],[8,-12],[-16,-26],[16,26],[-38,38],[38,-40],
+    [-22,14],[27,-20],[-8,12],[8,-12],[-16,-26],[16,26],[-38,38],[38,-40],
     [-44,16],[44,-20],[-30,44],[30,-46],[-4,-14],[4,16],[24,44],[-24,-44],
     [50,18],[-50,-18],[-52,32],[52,-32],[-18,40],[18,-42],[10,-16],[-10,18],
     [34,34],[-34,-34],[46,2],[-46,8],[28,-8],[-28,10],
@@ -1060,6 +1061,63 @@ function buildWorld(){
   };
   scaffold(-18, -5);
   scaffold(18, -2);
+
+  /* ===== 地圖擴充：天橋 / 水塔 / 貨櫃迷宮 / 廢棄巴士 ===== */
+  // ── 中央天橋（倉庫北側，橫貫東西的制高走廊，兩端樓梯自動上階）──
+  {
+    const bz = -14;
+    box(1.3, 3.2, 1.3, matConc, -14, 1.6, bz);            // 支撐塔
+    box(1.3, 3.2, 1.3, matConc,  14, 1.6, bz);
+    box(30, 0.3, 3, matConcBig, 0, 3.35, bz);             // 橋面（頂 3.5，下方可通行）
+    box(30, 0.5, 0.12, matPlaster, 0, 3.85, bz-1.45, true, false);  // 護欄（視覺）
+    box(30, 0.5, 0.12, matPlaster, 0, 3.85, bz+1.45, true, false);
+    for (let i=0;i<8;i++){                                 // 兩端樓梯（0.42 級距自動上階）
+      const sh = 0.42*(i+1);
+      box(0.8, sh, 2.6, matConc,  15.4 + (7-i)*0.8, sh/2, bz);
+      box(0.8, sh, 2.6, matConc, -15.4 - (7-i)*0.8, sh/2, bz);
+    }
+  }
+  // ── 水塔（西南地標：四腳鋼架＋高架水槽，塔下遮蔭掩體）──
+  {
+    const wx = -36, wz = -46;
+    const legMat = new THREE.MeshStandardMaterial({color:0x5a6068, roughness:.5, metalness:.55});
+    for (const [ox,oz] of [[-1.4,-1.4],[1.4,-1.4],[-1.4,1.4],[1.4,1.4]]){
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(.14,.17,5.4,8), legMat);
+      leg.position.set(wx+ox, 2.7, wz+oz);
+      leg.castShadow = true; scene.add(leg); worldMeshes.push(leg);
+      addCollider(wx+ox, wz+oz, .45, .45, 5.4);
+    }
+    const tank = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 2.6, 14),
+      new THREE.MeshStandardMaterial({map:TEX.metal, color:0x7a94a8, roughness:.45, metalness:.4}));
+    tank.position.set(wx, 6.7, wz);
+    tank.castShadow = true; scene.add(tank); worldMeshes.push(tank);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(2.3, 1, 14),
+      new THREE.MeshStandardMaterial({color:0x50606c, roughness:.6, metalness:.3}));
+    cap.position.set(wx, 8.5, wz); cap.castShadow = true; scene.add(cap); worldMeshes.push(cap);
+    box(1.3,1.3,1.3, matWood, wx+2.6, .65, wz+1);          // 塔邊木箱掩體
+    box(1.3,1.3,1.3, matWood, wx-2.4, .65, wz-1.8);
+  }
+  // ── 貨櫃迷宮（東北角：三櫃圍出 U 型窄巷）──
+  box(7.2, 2.7, 2.5, matMetalR, 42, 1.35, 34);
+  box(2.5, 2.7, 7.2, matMetalG, 47, 1.35, 40);
+  box(7.2, 2.7, 2.5, matMetalB, 42, 1.35, 46);
+  box(7.2, 2.7, 2.5, matMetalG, 42, 4.05, 46);             // 疊櫃制高
+  box(1.3,1.3,1.3, matWood, 43.5, .65, 40);                // 巷內跳箱
+  // ── 廢棄巴士（西北：大型車體掩體，可繞可躲）──
+  {
+    const busMat = new THREE.MeshStandardMaterial({map:TEX.metal, color:0x9a8a3a, roughness:.6, metalness:.25});
+    box(7.2, 2.1, 2.4, busMat, -18, 1.4, 46);              // 車身
+    const win = new THREE.Mesh(new THREE.BoxGeometry(7.0, .6, 2.5),
+      new THREE.MeshStandardMaterial({color:0x1c2830, roughness:.2, metalness:.5}));
+    win.position.set(-18, 1.9, 46); scene.add(win); worldMeshes.push(win);   // 車窗帶
+    box(7.3, .18, 2.5, busMat, -18, 2.55, 46, true, false);// 車頂簷
+    for (const dx of [-2.5, 2.4]) for (const dz of [-1.25, 1.25]){
+      const wl = new THREE.Mesh(new THREE.CylinderGeometry(.42,.42,.3,10),
+        new THREE.MeshStandardMaterial({color:0x1c1e22, roughness:.9}));
+      wl.rotation.x = Math.PI/2; wl.position.set(-18+dx, .42, 46+dz);
+      wl.castShadow = true; scene.add(wl); worldMeshes.push(wl);
+    }
+  }
 
   // 寫實天空：漸層天穹＋太陽
   {
@@ -1352,6 +1410,16 @@ function updateLocal(dt){
 }
 
 /* ------------------------- 射擊 ------------------------- */
+/* CS 式散佈模型：站定第一發＝零散佈（絕對精準）；
+   散佈只來自 連射熱度 / 移動 / 滯空，準星擴張與此公式完全同步 */
+function currentSpread(g, gat){
+  let sp = g.spread * me.spreadHeat;                       // 連射熱度
+  if (slots[myIdx] && slots[myIdx].moving) sp += g.spread * 1.2;   // 移動懲罰
+  if (!me.onGround) sp += g.spread * 2.2;                  // 滯空懲罰
+  if (gat) sp = Math.max(sp, g.spread * 0.9);              // 殲滅砲恆定掃射散佈
+  if (me.zoomed && g.zoom) sp *= 0.1;                      // 開鏡穩定
+  return sp;
+}
 const raycaster = new THREE.Raycaster();
 function shootTargets(){
   const list = [...worldMeshes];
@@ -1373,6 +1441,9 @@ function tryFire(){
   if (!gat && me.ammo <= 0){ startReload(); return; }
   me.fireCd = 60/g.rpm;
   if (!gat) me.ammo--;
+  // 準星零誤差：先取「開火當下」的準星指向與散佈，後座力與熱度只影響下一發
+  const aimPitch = me.pitch + me.recoil;   // 當下準星實際指向（含既有後座抬升）
+  const spreadNow = currentSpread(g, gat); // 當下散佈（站定第一發＝0）
   me.recoil += (gat?0.006 : (g.dmg>60?0.035:0.012)) * (me.zoomed?0.4:1);
   me.spreadHeat = Math.min(1.6, me.spreadHeat + (gat?0.05:0.28));
   sfx(g.pellets>1||g.dmg>60?'shot2':'shot', gat?.7:1);
@@ -1380,13 +1451,14 @@ function tryFire(){
   spawnCasing();
   const myEl = CHARS[slots[myIdx].char].el;
   const elColor = EL[myEl].color;
-  const spread = g.spread * (me.zoomed&&g.zoom?0.15:1) * (1+me.spreadHeat);
-  const origin = new THREE.Vector3(me.pos.x, EYE(), me.pos.z);
-  const aimPitch = me.pitch + me.recoil;   // 子彈沿準星實際指向（含後座抬升）
+  // 子彈起點＝攝影機實際位置（含走路起伏），與畫面完全同軸
+  const origin = camera.position.clone();
   const pierceMax = g.pierce || 0;         // 貫穿掩體層數（狙擊1層、殲滅砲3層）
   for (let p=0; p<g.pellets; p++){
+    // 霰彈：第 1 顆彈丸走準星中心，其餘散射（保留霰彈特性）
+    const jit = p===0 ? spreadNow : spreadNow + (g.pellets>1 ? g.spread : 0);
     const dir = new THREE.Vector3(0,0,-1)
-      .applyEuler(new THREE.Euler(aimPitch + rand(-spread,spread), me.yaw + rand(-spread,spread), 0, 'YXZ'));
+      .applyEuler(new THREE.Euler(aimPitch + rand(-jit,jit), me.yaw + rand(-jit,jit), 0, 'YXZ'));
     raycaster.set(origin, dir);
     raycaster.far = g.range*1.6;
     const hits = raycaster.intersectObjects(shootTargets(), false);
@@ -3387,7 +3459,7 @@ function avatarStatusFX(s, a){
 const NAV = [];
 for (const x of [-44,-28,-12,0,12,28,44]) for (const z of [-44,-28,-12,0,12,28,44])
   if (Math.abs(x)>16 || Math.abs(z)>10) NAV.push([x,z]);
-NAV.push([0,12],[0,-12],[-10,0],[10,0]);
+NAV.push([0,12],[0,-12],[-10,0],[10,0],[0,-17],[44,40],[-18,42],[-36,-42]);  // 天橋下/迷宮/巴士/水塔
 
 function botThink(s, dt){
   if (!s.bot) s.bot = {wp:null, aimErr:1, strafe:Math.random()*6, fireCd:0, thinkCd:0, reload:0, ammo:GUNS[s.gun].mag, nadeCd:rand(6,12)};
@@ -3790,10 +3862,9 @@ function fmtTime(sec){
 }
 function updateHUD(){
   const s = slots[myIdx];
-  // 動態準星擴張：武器散佈＋連射熱度＋移動＋滯空
-  const xg = GUNS[me.gun];
-  const spNow = xg.spread*(1+me.spreadHeat) + (s.moving?0.014:0) + (me.onGround?0:0.02);
-  updateXhair(clamp(3.5 + spNow*300, 3.5, 26));
+  // 動態準星擴張：與實際散佈公式完全同步——準星縮到最小＝子彈必中中心點
+  const spNow = currentSpread(GUNS[me.gun], s.fx.gat>0);
+  updateXhair(clamp(3.5 + spNow*380, 3.5, 26));
   $('tRed').textContent = scores.red; $('tBlue').textContent = scores.blue;
   $('timer').textContent = fmtTime(matchT);
   $('hpfill').style.width = clamp(s.hp,0,100)+'%';
