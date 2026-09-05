@@ -2319,15 +2319,16 @@ function hostUseUlt(idx){
       hostAddZone('ice', op.x, op.z, 2.5, 6, idx);
     }
   } else if (el==='thunder'){
-    // 九天玄雷：三波天雷轟擊所有敵人
+    // 九天玄雷（削弱版）：三波天雷改轟 32m 內敵人，單波傷害與暈眩下調
     const strike = ()=>{
       if (!started) return;
       const evb = {t:'ev', k:'boltset', pts:[]};
       for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team!==s.team){
         const op = o.idx===myIdx ? me.pos : o.pos;
+        if ((op.x-s.pos.x)**2 + (op.z-s.pos.z)**2 > 1024) continue;   // 超出 32m 不再全圖轟
         evb.pts.push([+op.x.toFixed(1), +op.z.toFixed(1)]);
-        hostDamage(o, 55*elemMult('thunder',CHARS[o.char].el), s, false, '九天玄雷');
-        o.fx.stun = Math.max(o.fx.stun, 0.9);
+        hostDamage(o, 38*elemMult('thunder',CHARS[o.char].el), s, false, '九天玄雷');
+        o.fx.stun = Math.max(o.fx.stun, 0.6);
       }
       if (evb.pts.length){ bcast(evb); onGameEvent(evb); }
     };
