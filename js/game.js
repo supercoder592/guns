@@ -23,8 +23,7 @@ const EL = {
   dark:   { glyph:'暗', name:'暗行', color:0x8b5cf6, css:'#a78bfa', fx:'命中蝕明‧彈落暗幕域', beats:['light'] },
   light:  { glyph:'光', name:'光行', color:0xfff3b8, css:'#fff3b8', fx:'光速彈道‧彈落聖域',   beats:['dark'] },
   time:   { glyph:'時', name:'時行', color:0x67e8f9, css:'#67e8f9', fx:'命中時滯‧彈落時緩域', beats:[] },
-  sound:  { glyph:'音', name:'音行', color:0xf97316, css:'#fb923c', fx:'命中震盪‧彈落聲場',   beats:['phantom'] },
-  phantom:{ glyph:'幻', name:'幻行', color:0xf472b6, css:'#f9a8d4', fx:'近戰雙刃‧鏡花分身',   beats:['earth'] },
+  sound:  { glyph:'音', name:'音行', color:0xf97316, css:'#fb923c', fx:'命中震盪‧彈落聲場',   beats:[] },
 };
 function elemMult(a, d){
   if (!a || !d) return 1;
@@ -45,7 +44,6 @@ const CHARS = [
   { el:'light', name:'聖輝‧曦臨', skill:'曦光聖域', skillCd:12, ultName:'光行奧義・審判之曦淨世光', ultSub:'RADIANT JUDGEMENT' },
   { el:'time',  name:'剎那‧永劫', skill:'時之回溯', skillCd:15, ultName:'時行奧義・剎那即永恆時停', ultSub:'ETERNITY IN A MOMENT' },
   { el:'sound', name:'鳴神‧聲爆', skill:'迴聲定位', skillCd:12, ultName:'音行奧義・鳴神咆哮滅世濤', ultSub:'ROAR OF THE THUNDER GOD' },
-  { el:'phantom',name:'虛影‧無相', skill:'鏡花分身', skillCd:13, ultName:'幻行奧義・無相千影亂舞', ultSub:'DANCE OF A THOUSAND SHADOWS' },
 ];
 const GUNS = [
   { name:'靈息手槍',   en:'P-DAO 9mm',  dmg:30,  hs:2.0, mag:15, reload:1.6, rpm:420, spread:0.010, auto:false, pellets:1, range:70 },
@@ -55,8 +53,6 @@ const GUNS = [
   { name:'貫日狙擊槍', en:'GR-1 SNIPER',dmg:105, hs:2.0, mag:5,  reload:3.2, rpm:45,  spread:0.002, auto:false, pellets:1, range:400, zoom:true, pierce:1 },
   // index 5：金系大招「萬刃殲滅砲」專用（不可手動切換）
   { name:'萬刃殲滅砲', en:'MYRIAD GATLING', dmg:15, hs:1.6, mag:999, reload:0, rpm:1100, spread:0.035, auto:true, pellets:1, range:80, pierce:3 },
-  // index 6：幻系專用近戰雙刃（幻系不可用槍）
-  { name:'無相雙刃', en:'PHANTOM TWIN BLADES', dmg:46, hs:1.6, mag:0, reload:0, rpm:140, spread:0, auto:true, pellets:1, range:3.6 },
 ];
 const GUN_COUNT = 5;   // 玩家可持有的槍數（不含大招砲）
 const BOT_NAMES = ['哨兵‧甲','哨兵‧乙','哨兵‧丙','傀兵‧子','傀兵‧丑','傀兵‧寅','鐵衛‧壹','鐵衛‧貳',
@@ -180,18 +176,6 @@ function sfx(kind, vol=1){
     o.frequency.exponentialRampToValueAtTime(1244, t+0.05);
     o.connect(g); g.gain.setValueAtTime(0.14*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.09);
     o.start(t); o.stop(t+0.1);
-  } else if (kind==='slash'){
-    // 近戰揮刃：短促風切
-    const len = 0.16;
-    const buf = ac.createBuffer(1, ac.sampleRate*len, ac.sampleRate);
-    const d = buf.getChannelData(0);
-    for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(Math.sin(Math.PI*i/d.length), 1.5);
-    const src = ac.createBufferSource(); src.buffer = buf;
-    const f = ac.createBiquadFilter(); f.type='bandpass'; f.Q.value=1.2;
-    f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(3600, t+len);
-    src.connect(f); f.connect(g);
-    g.gain.setValueAtTime(0.4*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+len);
-    src.start(t);
   } else if (kind==='sonar'){
     // 迴聲定位：純音脈衝
     const o = ac.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(1180, t);
@@ -368,7 +352,6 @@ function hostOnData(conn, d){
   else if (d.t==='whit'){ hostWallHit(d.id, d.dmg||20); }
   else if (d.t==='bhit'){ hostBarrelHit(conn._idx, d.id|0, d.dmg||20); }
   else if (d.t==='ghit'){ hostGroundHit(conn._idx, +d.x||0, +d.y||0, +d.z||0); }
-  else if (d.t==='dhit'){ hostDecoyHit(d.id|0, d.dmg||20); }
   else if (d.t==='skill'){ hostUseSkill(conn._idx, d); }
   else if (d.t==='ult'){ hostUseUlt(conn._idx); }
 }
@@ -1295,7 +1278,6 @@ const me = {
   zoomed:false, bobT:0, dead:false, nades:2,
   pose:0, eyeH:1.62, slideT:0, slideDir:new THREE.Vector3(),   // 0站 1蹲 2滑壘
   hist:[], _histT:0,          // 時系：位置/血量歷史（每 0.25s 一筆，約 3 秒前可回溯）
-  _swingT:0, _swingSide:1,    // 幻系：近戰揮刃動畫
 };
 const keys = {};
 let locked = false;
@@ -1462,15 +1444,6 @@ function updateLocal(dt){
                            - vmDraw*0.24 - rl*(0.06 + Math.sin(now()*7)*0.015);
     viewmodel.rotation.z = -vmSwayX*1.7 - mv*Math.sin(me.bobT)*0.012;
     viewmodel.rotation.x = 0.02 + vmSwayY*2.2 - vmDraw*1.0 - rl*0.38;
-    // 幻系近戰：揮刃斬擊動畫（左右交替橫掃）
-    if (me._swingT > 0){
-      const sk = clamp((now() - me._swingT) / 0.28, 0, 1);
-      const arc = Math.sin(sk*Math.PI);
-      viewmodel.rotation.y = 0.05 + me._swingSide * arc * 1.1;
-      viewmodel.rotation.z += me._swingSide * arc * 0.6;
-      viewmodel.position.x += -me._swingSide * arc * 0.12;
-      if (sk >= 1) me._swingT = 0;
-    }
   }
 
   // 開火 / 換彈
@@ -1518,12 +1491,10 @@ function shootTargets(){
     if (s.idx===myIdx || s.ctrl==='empty' || !s.alive || !s.avatar) continue;
     list.push(...s.avatar.parts);
   }
-  for (const v of decoyVis.values()) list.push(...v.parts);   // 幻系分身可被命中
   return list;
 }
 function tryFire(){
   const gat = slots[myIdx].fx.gat > 0;             // 萬刃殲滅砲形態
-  if (!gat && CHARS[slots[myIdx].char].el==='phantom'){ meleeAttack(); return; }  // 幻系：只有近戰
   const g = gat ? GUNS[5] : GUNS[me.gun];
   if (!gat && me.reloading>0){   // 換彈中按扳機：機械空響提示
     if (now() - (tryFire._ck||0) > .3){ tryFire._ck = now(); sfx('click', .7); }
@@ -1566,12 +1537,6 @@ function tryFire(){
         spawnSmoke(h.point.x, h.point.y, h.point.z, {n:2, size:.5, color:0x883333, rise:.4, life:.6, grow:.5, opacity:.5, spread:.15});
         end = h.point;
         break;
-      }
-      if (ud.decoy !== undefined){   // 幻系分身：可被射爆
-        showHitmark(false); sfx('hit');
-        reportDecoyHit(ud.decoy, g.dmg);
-        elemHitFX(h.point, 'phantom');
-        end = h.point; break;
       }
       if (ud.barrel !== undefined){
         reportBarrelHit(ud.barrel, g.dmg);
@@ -1660,56 +1625,11 @@ function impactElem(point, dir, el, isRock){
   } else if (el==='sound'){
     sparkBurst(point, 0xfb923c, 8, 4);
     spriteBurst(point, TEX.ring, 0xfb923c, .1, 1.4, .25, .7);  // 聲波環
-  } else if (el==='phantom'){
-    sparkBurst(point, 0xf9a8d4, 8, 4);
-    spawnSmoke(point.x, point.y, point.z, {n:2, size:.5, color:0xf472b6, add:true, rise:.3, life:.4, grow:.8, opacity:.5, spread:.1});
   } else {
     sparkBurst(point, 0xd8c090, 6, 3);
     spawnSmoke(point.x, point.y, point.z, {n:2, size:.6, color:0xa08b62, rise:.6, life:.9, grow:.7, opacity:.5, spread:.15});
   }
   if (isRock || Math.random()<.4) spawnDebris(point.x, point.y, point.z, isRock?0x8a6a3c:0x777770, 2, {min:.03,max:.08,spd:3});
-}
-/* ---- 幻系近戰：無相雙刃（三向短距斬擊） ---- */
-function meleeAttack(){
-  if (me.fireCd > 0 || me.dead) return;
-  const g = GUNS[6];
-  me.fireCd = 60/g.rpm * (slots[myIdx].fx.tslow>0 ? 1.6 : 1);
-  me._swingSide = -me._swingSide;
-  me._swingT = now();
-  sfx('slash', .9);
-  slashFX();
-  const origin = camera.position.clone();
-  for (const off of [0, 0.14, -0.14]){
-    const dir = new THREE.Vector3(0,0,-1)
-      .applyEuler(new THREE.Euler(me.pitch, me.yaw + off, 0, 'YXZ'));
-    raycaster.set(origin, dir);
-    raycaster.far = g.range;
-    const hits = raycaster.intersectObjects(shootTargets(), false);
-    if (!hits.length) continue;
-    const h = hits[0], ud = h.object.userData || {};
-    if (ud.slot !== undefined){
-      showHitmark(ud.part==='head'); sfx('hit');
-      reportHit(ud.slot, ud.part, 6, h.distance);
-      elemHitFX(h.point, 'phantom');
-      break;
-    }
-    if (ud.decoy !== undefined){ reportDecoyHit(ud.decoy, g.dmg); elemHitFX(h.point, 'phantom'); break; }
-    if (ud.barrel !== undefined){ reportBarrelHit(ud.barrel, g.dmg); sparkBurst(h.point, 0xf9a8d4, 6, 3); break; }
-    if (ud.wallId !== undefined){ reportWallHit(ud.wallId, g.dmg); impactElem(h.point, dir, 'phantom', true); break; }
-    if (h.distance < 1.8) sparkBurst(h.point, 0xf9a8d4, 4, 2);   // 刃劃過牆面
-  }
-}
-function slashFX(){
-  // 鏡頭前的粉紅刃光弧
-  const p = camera.localToWorld(new THREE.Vector3(me._swingSide*0.3, -0.05, -1.1));
-  spriteBurst(p, TEX.flash, 0xf9a8d4, .5, 1.4, .18);
-  const a = camera.localToWorld(new THREE.Vector3(me._swingSide*0.8, 0.25, -1));
-  const b = camera.localToWorld(new THREE.Vector3(-me._swingSide*0.8, -0.25, -1.2));
-  tracer(a, b, 0xf9a8d4);
-}
-function reportDecoyHit(id, dmg){
-  if (isHost) hostDecoyHit(id, dmg);
-  else if (conns[0]) send(conns[0], {t:'dhit', id, dmg});
 }
 function reportBarrelHit(id, dmg){
   if (isHost) hostBarrelHit(myIdx, id, dmg);
@@ -1720,7 +1640,6 @@ function reportGroundHit(pt){
   else if (conns[0]) send(conns[0], {t:'ghit', x:+pt.x.toFixed(1), y:+pt.y.toFixed(1), z:+pt.z.toFixed(1)});
 }
 function startReload(){
-  if (slots[myIdx] && CHARS[slots[myIdx].char].el==='phantom') return;   // 雙刃不需換彈
   if (me.reloading>0 || me.ammo===GUNS[me.gun].mag) return;
   me.reloading = GUNS[me.gun].reload;
   sfx('reload');
@@ -1816,33 +1735,6 @@ function rebuildViewmodel(){
     viewmodel.add(m); return m;
   };
   let len = 0.5;
-  if (CHARS[slots[myIdx]?.char ?? selChar].el==='phantom'){
-    // 幻系專屬：無相雙刃（不持槍）——鋼刃本體＋粉色能量刃鋒
-    const blade = new THREE.MeshStandardMaterial({color:0xb9c0c9, metalness:.92, roughness:.18});
-    const edge  = new THREE.MeshStandardMaterial({color:0xf9a8d4, emissive:0xf472b6, emissiveIntensity:1.4,
-      transparent:true, opacity:.9});
-    const grip  = new THREE.MeshStandardMaterial({color:0x2a2130, roughness:.7});
-    const mk = (x, tilt)=>{
-      const gp = new THREE.Group();
-      const b1 = new THREE.Mesh(new THREE.BoxGeometry(.016,.045,.42), blade); b1.position.z = -.26;
-      const eg = new THREE.Mesh(new THREE.BoxGeometry(.006,.05,.42), edge); eg.position.set(0,-.004,-.26);
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(.02,.1,4), blade);
-      tip.rotation.x = -Math.PI/2; tip.position.z = -.51;
-      const gd = new THREE.Mesh(new THREE.BoxGeometry(.08,.018,.026), M.steel); gd.position.z = -.03;
-      const hd = new THREE.Mesh(new THREE.BoxGeometry(.026,.04,.12), grip); hd.position.z = .06;
-      gp.add(b1, eg, tip, gd, hd);
-      gp.position.set(x, -.03, -.1); gp.rotation.z = tilt; gp.rotation.y = -x*.5;
-      viewmodel.add(gp);
-    };
-    mk(0.05, .12); mk(-0.16, -.2);
-    B(.044,.011,.05, M.elem, 0,.06,-.02);   // 屬性紋章
-    if (muzzleSprite) muzzleSprite.position.set(0,0,-999);   // 近戰無槍口焰
-    viewmodel.position.set(0.22,-0.2,-0.38);
-    viewmodel.rotation.y = 0.05; viewmodel.rotation.x = 0.02;
-    viewmodel.scale.setScalar(0.8);
-    if (flashLight) flashLight.color.set(e.color);
-    return;
-  }
   switch (me.gun){
     case 0: // 靈息手槍：滑套、擊錘、握把、扳機護弓、前後準星
       len = 0.3;
@@ -1928,7 +1820,7 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
   const att = slots[attIdx], vic = slots[vicIdx];
   if (!att || !vic || !att.alive || !vic.alive || att.team===vic.team) return;
   if (vic.fx.shield > 0){ addUlt(att, 2); return; }
-  const g = GUNS[clamp(gunIdx,0,6)];
+  const g = GUNS[clamp(gunIdx,0,5)];
   const aEl = CHARS[att.char].el, vEl = CHARS[vic.char].el;
   let dmg = g.dmg;
   const falloff = clamp(1 - Math.max(0, dist-g.range)/g.range, 0.35, 1);
@@ -2016,7 +1908,6 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
     vic.fx.deaf = Math.max(vic.fx.deaf, 1.2);
     if (vic.ctrl==='bot' && vic.bot) vic.bot.aimDelay = Math.max(vic.bot.aimDelay||0, 0.35);
   }
-  if (aEl==='phantom'){ vic.fx.slow = Math.max(vic.fx.slow, 0.8); }  // 幻刃：殘影滯身
   hostDamage(vic, dmg, att, part==='head', g.name);
   addUlt(att, dmg*0.14);
 }
@@ -2256,21 +2147,6 @@ function hostUseSkill(idx, d){
       }
     }
   }
-  else if (el==='phantom'){
-    // 鏡花分身：身側生成兩具誘餌分身（可被打爆、吸引 AI 火力）
-    const f = new THREE.Vector3(d.dir[0],0,d.dir[2]).normalize();
-    const r = new THREE.Vector3(-f.z,0,f.x);
-    ev.dc = [];
-    for (const side of [1.4, -1.4]){
-      const dx = clamp(d.p[0]+r.x*side, -56, 56), dz = clamp(d.p[2]+r.z*side, -56, 56);
-      const did = ++decoySeq;
-      decoys.set(did, {x:dx, z:dz, ry:Math.atan2(f.x,f.z)+Math.PI, hp:40, until:now()+12, team:s.team, src:idx});
-      ev.dc.push([did, +dx.toFixed(1), +dz.toFixed(1), +(Math.atan2(f.x,f.z)+Math.PI).toFixed(2)]);
-    }
-    ev.tm = s.team; ev.ch = s.char; ev.nm = s.name;
-    while (decoys.size > 6){ const old = decoys.keys().next().value;
-      decoys.delete(old); const de = {t:'ev', k:'decoygone', id:old}; bcast(de); onGameEvent(de); }
-  }
   bcast(ev); onGameEvent(ev);
 }
 function localUlt(){
@@ -2400,27 +2276,6 @@ function hostUseUlt(idx){
       }
     }
     hostAddZone('echo', s.pos.x, s.pos.z, 6, 5, idx);
-  } else if (el==='phantom'){
-    // 無相千影亂舞：護體殘影，對 20m 內至多 6 名敵人連環瞬身斬
-    s.fx.shield = 1.6;
-    const near = foes.map(o=>{
-      const op = o.idx===myIdx ? me.pos : o.pos;
-      return {o, d:Math.hypot(op.x-s.pos.x, op.z-s.pos.z)};
-    }).filter(x=> x.d<20).sort((a,b)=> a.d-b.d).slice(0,6);
-    near.forEach((x, i)=>{
-      setTimeout(()=>{
-        if (!started || !x.o.alive || !s.alive) return;
-        const op = x.o.idx===myIdx ? me.pos : x.o.pos;
-        hostDamage(x.o, 52*elemMult('phantom',CHARS[x.o.char].el), s, false, '千影亂舞');
-        const fe = {t:'ev', k:'fstep', x:+op.x.toFixed(1), y:+(op.y+1.2).toFixed(1), z:+op.z.toFixed(1)};
-        bcast(fe); onGameEvent(fe);
-        // 施術者瞬身到目標背後
-        const bx = clamp(op.x+rand(-1.2,1.2), -56, 56), bz = clamp(op.z+rand(-1.2,1.2), -56, 56);
-        if (idx===myIdx){ me.pos.set(bx, op.y, bz); me.vel.set(0,0,0); }
-        else if (s.ctrl==='bot'){ s.pos.set(bx, op.y, bz); }
-        else { const te = {t:'ev', k:'tp', i:idx, p:[+bx.toFixed(1), +op.y.toFixed(1), +bz.toFixed(1)]}; bcast(te); }
-      }, 300 + i*220);
-    });
   }
   bcast(ev); onGameEvent(ev);
 }
@@ -2511,11 +2366,6 @@ function onGameEvent(d){
       sfx('sonar', .9);
       if (d.i===myIdx) centerMsg('迴 聲 定 位 — 敵蹤盡現');
     }
-    if (d.el==='phantom' && d.dc){ // 鏡花分身：生成誘餌
-      for (const [did, dx, dz, dry] of d.dc) spawnDecoyVis(did, dx, dz, dry, d.tm, d.ch, d.nm);
-      sfx('slash', .7);
-      if (d.i===myIdx) centerMsg('鏡 花 分 身');
-    }
   }
   else if (d.k==='ult'){
     const s = slots[d.i], c = CHARS[s.char], e = EL[c.el];
@@ -2591,11 +2441,6 @@ function onGameEvent(d){
         setTimeout(()=>{ waveRing(d.p[0], d.p[2], i2%2?0xffd9b0:0xfb923c, 40, 1.4, 3+i2); sfx('boom', .5); }, i2*200);
       spawnSmoke(d.p[0], 1, d.p[2], {n:12, size:2, color:0xffc9a0, add:true, rise:1.5, life:1, grow:1.6, opacity:.5, spread:3});
     }
-    if (c.el==='phantom'){ // 千影亂舞：殘影亂閃
-      shakeCam(.3);
-      for (let i2=0;i2<6;i2++)
-        setTimeout(()=> sparkBurst(new THREE.Vector3(d.p[0]+rand(-4,4), rand(.5,2), d.p[2]+rand(-4,4)), 0xf472b6, 8, 5), i2*180);
-    }
   }
   else if (d.k==='wallgone'){ removeWall(d.id); }
   else if (d.k==='mwall'){ spawnMiniWall(d.wid, d.x, d.z, d.ry); }
@@ -2620,18 +2465,6 @@ function onGameEvent(d){
     if (i>=0){ const n = nades[i]; scene.remove(n.group); nades.splice(i,1); nadeExplodeVis(n, d.x, d.y, d.z); }
   }
   else if (d.k==='boomfx'){ explosionFX(d.x, d.y, d.z, .7); }
-  else if (d.k==='decoygone'){ removeDecoyVis(d.id); }
-  else if (d.k==='tp'){   // 幻大招：施術者瞬身（net 玩家本地執行）
-    if (d.i===myIdx && !me.dead){ me.pos.set(d.p[0], d.p[1], d.p[2]); me.vel.set(0,0,0); }
-  }
-  else if (d.k==='fstep'){   // 千影亂舞：目標處的粉紅斬閃
-    const p = new THREE.Vector3(d.x, d.y, d.z);
-    spriteBurst(p, TEX.flash, 0xf9a8d4, .4, 1.8, .2);
-    sparkBurst(p, 0xf472b6, 12, 6);
-    arcLine(p.clone().add(new THREE.Vector3(rand(-1,1), .8, rand(-1,1))),
-            p.clone().add(new THREE.Vector3(rand(-1,1), -.6, rand(-1,1))), .3, 0xf9a8d4);
-    sfx('slash', .8);
-  }
   else if (d.k==='barrel'){
     const b = barrels.get(d.id);
     if (b && !b.dead){
@@ -2649,60 +2482,6 @@ function onGameEvent(d){
         me.vel.x += Math.cos(a)*kb; me.vel.z += Math.sin(a)*kb; me.vel.y += (1-dd/8)*7;
       }
     }
-  }
-}
-
-/* ---------- 幻系分身（誘餌）：主機裁決、各端渲染、AI 會上當 ---------- */
-const decoys = new Map();      // 主機邏輯 id -> {x,z,ry,hp,until,team,src}
-const decoyVis = new Map();    // 各端視覺 id -> {group, parts}
-let decoySeq = 0;
-function spawnDecoyVis(id, x, z, ry, team, charIdx, name){
-  if (decoyVis.has(id)) return;
-  const e = EL[CHARS[charIdx]?.el || 'phantom'];
-  const tc = team==='red' ? 0x8a4038 : 0x35507a;
-  const group = new THREE.Group();
-  const parts = [];
-  const mk = (w,h,d, color, px,py,pz)=>{
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
-      new THREE.MeshStandardMaterial({color, roughness:.8, transparent:true, opacity:.92}));
-    m.position.set(px,py,pz); m.castShadow = true;
-    m.userData = {decoy:id};
-    group.add(m); parts.push(m);
-    return m;
-  };
-  mk(.5,.62,.3, tc, 0,1.08,0);                     // 軀幹
-  mk(.3,.3,.3, 0xd7b08c, 0,1.62,0).userData = {decoy:id};  // 頭
-  mk(.3,.12,.32, 0x3a3f45, 0,1.83,0);              // 頭盔
-  mk(.16,.7,.2, 0x3f4a42, -.14,.35,0);             // 腿
-  mk(.16,.7,.2, 0x3f4a42, .14,.35,0);
-  mk(.13,.5,.18, tc, -.33,1.15,0);                 // 臂
-  mk(.13,.5,.18, tc, .33,1.15,0);
-  // 屬性微光：分身通體泛出幻彩
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color:e.color,
-    transparent:true, opacity:.35, depthWrite:false, blending:THREE.AdditiveBlending}));
-  glow.scale.set(1.6, 2.2, 1); glow.position.y = 1.1;
-  group.add(glow);
-  group.position.set(x, 0, z);
-  group.rotation.y = ry;
-  scene.add(group);
-  decoyVis.set(id, {group, parts});
-  spawnSmoke(x, 1, z, {n:5, size:.8, color:0xf9a8d4, add:true, rise:.5, life:.5, grow:.9, opacity:.5, spread:.4});
-}
-function removeDecoyVis(id){
-  const v = decoyVis.get(id); if(!v) return;
-  const p = v.group.position;
-  spawnSmoke(p.x, 1, p.z, {n:7, size:.9, color:0xf9a8d4, add:true, rise:.8, life:.5, grow:1.1, opacity:.6, spread:.4});
-  sparkBurst(new THREE.Vector3(p.x, 1.2, p.z), 0xf472b6, 10, 4);
-  scene.remove(v.group);
-  decoyVis.delete(id);
-}
-function hostDecoyHit(id, dmg){
-  const dc = decoys.get(id); if(!dc) return;
-  dc.hp -= dmg||20;
-  if (dc.hp <= 0){
-    decoys.delete(id);
-    const ev = {t:'ev', k:'decoygone', id};
-    bcast(ev); onGameEvent(ev);
   }
 }
 
@@ -2877,7 +2656,7 @@ function sparkBurst(p, color, n=8, spd=3){
 /* ---------- 元素投射物：射出元素本身（火球/種子/水彈/飛刃/岩石） ---------- */
 const bolts = [];
 const MAX_BOLTS = 60;
-const BOLT_SPEED = { metal:200, wood:140, water:150, fire:115, earth:135, ice:160, thunder:230, wind:180, dark:150, light:330, time:180, sound:210, phantom:150 };
+const BOLT_SPEED = { metal:200, wood:140, water:150, fire:115, earth:135, ice:160, thunder:230, wind:180, dark:150, light:330, time:180, sound:210 };
 function spawnBolt(from, to, el){
   if (bolts.length >= MAX_BOLTS){ const old = bolts.shift(); scene.remove(old.group); }
   const group = new THREE.Group();
@@ -3156,7 +2935,6 @@ function hostNadeBoom(srcIdx, x, y, z){
     else if (el==='dark'){ o.fx.blind = Math.max(o.fx.blind, 2.2); }
     else if (el==='time'){ o.fx.tslow = Math.max(o.fx.tslow, 2.5); o.fx.slow = Math.max(o.fx.slow, 2); }
     else if (el==='sound'){ o.fx.deaf = Math.max(o.fx.deaf, 2.5); o.fx.stun = Math.max(o.fx.stun, .4); }
-    else if (el==='phantom'){ o.fx.slow = Math.max(o.fx.slow, 2); o.fx.blind = Math.max(o.fx.blind, 1); }
     else if (el==='wind'){
       const a = Math.atan2(p.z-z, p.x-x);
       if (o.ctrl==='bot'){
@@ -3182,7 +2960,6 @@ function hostNadeBoom(srcIdx, x, y, z){
   else if (el==='light') hostAddZone('sanct', zx, zz, 2.6, 5.5, srcIdx);
   else if (el==='time') hostAddZone('chrono', zx, zz, 2.6, 5, srcIdx);
   else if (el==='sound') hostAddZone('echo', zx, zz, 2.8, 5, srcIdx);
-  else if (el==='phantom') hostAddZone('gloom', zx, zz, 2.6, 4, srcIdx);
   else if (el==='earth'){   // 土雷：轟出岩掩體（避開站位以免卡人）
     let blocked = false;
     for (const o of slots){
@@ -3369,12 +3146,6 @@ function elemHitFX(p, el){
       spriteBurst(p, TEX.ring, 0xfb923c, .12, 1.6, .28);
       spriteBurst(p, TEX.ring, 0xffd9b0, .3, 2.2, .35, .6);
       sparkBurst(p, 0xffc9a0, 6, 4);
-      break;
-    case 'phantom': // 幻刃殘光：粉紅斬痕交錯
-      spriteBurst(p, TEX.flash, 0xf9a8d4, .35, 1.3, .22);
-      arcLine(p.clone().add(new THREE.Vector3(rand(-.6,.6), .5, rand(-.6,.6))),
-              p.clone().add(new THREE.Vector3(rand(-.6,.6), -.4, rand(-.6,.6))), .2, 0xf9a8d4);
-      sparkBurst(p, 0xf472b6, 8, 4);
       break;
   }
 }
@@ -4002,13 +3773,6 @@ function botThink(s, dt){
     const d = o.pos.distanceTo(s.pos);
     if (d<td){ td=d; target=o; }
   }
-  // 幻系分身：AI 會上當，把敵方分身當成目標
-  for (const [did, dc] of decoys){
-    if (dc.team===s.team) continue;
-    const d = Math.hypot(dc.x-s.pos.x, dc.z-s.pos.z);
-    if (d<td){ td=d; target={pos:new THREE.Vector3(dc.x, 0, dc.z), isDecoy:did, team:dc.team,
-                             moving:false, fx:{stealth:0, reveal:0}}; }
-  }
   let seeTarget = false;
   if (fx.blind>0 && s.fx.gat<=0) target = null;   // 蝕明：AI 暫時失明
   if (target && td < 55){
@@ -4038,29 +3802,21 @@ function botThink(s, dt){
     s.rx = clamp(Math.atan2((target.pos.y+1.25)-(s.pos.y+1.55), td), -.5,.5);
     // 橫移 + 距離控制
     b.strafe += dt;
-    const isPh = CHARS[s.char].el==='phantom';   // 幻系 AI：貼身近戰
-    const g = isPh ? GUNS[6] : GUNS[s.gun];
-    const ideal = isPh ? 1.5 : g.pellets>1 ? 9 : g.zoom ? 30 : 16;
+    const g = GUNS[s.gun];
+    const ideal = g.pellets>1 ? 9 : g.zoom ? 30 : 16;
     const fwd = new THREE.Vector3(-Math.sin(s.ry),0,-Math.cos(s.ry));
     const rgt = new THREE.Vector3(-fwd.z,0,fwd.x);
     mv.addScaledVector(fwd, clamp((td-ideal)*0.25, -1, 1));
     mv.addScaledVector(rgt, Math.sin(b.strafe*1.7));
-    // 開槍 / 揮刃
+    // 開槍
     b.fireCd -= dt;
     if (b.reload > 0){ b.reload -= dt; if(b.reload<=0) b.ammo = g.mag; }
     else if (Math.abs(dy) < 0.15 && b.fireCd<=0 && b.aimDelay<=0){
       const gat = s.fx.gat > 0;
-      if (isPh && !gat){
-        if (td < 3.4){
-          b.fireCd = (60/GUNS[6].rpm) * rand(1.1,1.6) * (fx.tslow>0?1.6:1);
-          botShoot(s, target, td, GUNS[6], false);
-        }
-      } else {
-        b.fireCd = gat ? 0.09 : 60/g.rpm * (g.auto? rand(1.5,2.3) : rand(1.7,2.6));
-        if (fx.tslow>0) b.fireCd *= 1.6;   // 時滯：AI 射速也被拖慢
-        if (!gat){ b.ammo--; if (b.ammo<=0) b.reload = g.reload; }
-        botShoot(s, target, td, gat ? GUNS[5] : g, gat);
-      }
+      b.fireCd = gat ? 0.09 : 60/g.rpm * (g.auto? rand(1.5,2.3) : rand(1.7,2.6));
+      if (fx.tslow>0) b.fireCd *= 1.6;   // 時滯：AI 射速也被拖慢
+      if (!gat){ b.ammo--; if (b.ammo<=0) b.reload = g.reload; }
+      botShoot(s, target, td, gat ? GUNS[5] : g, gat);
     }
     // 手雷：中距離看得到目標時偶爾投擲
     if (b.nadeCd<=0 && td>7 && td<26 && Math.random()<dt*0.5){
@@ -4117,17 +3873,6 @@ function botThink(s, dt){
   } else s.moving = false;
 }
 function botShoot(s, target, dist, g, gat=false){
-  // 幻系 AI：近戰揮刃（無彈道，命中率高）
-  if (g === GUNS[6]){
-    const op = target.pos;
-    const fe = {t:'ev', k:'fstep', x:+op.x.toFixed(1), y:+(op.y+1.2).toFixed(1), z:+op.z.toFixed(1)};
-    bcast(fe); onGameEvent(fe);
-    if (Math.random() < 0.55){
-      if (target.isDecoy !== undefined) hostDecoyHit(target.isDecoy, g.dmg);
-      else hostApplyHit(s.idx, target.idx, Math.random()<0.08?'head':'body', 6, dist);
-    }
-    return;
-  }
   // 由 AI 準度決定是否命中
   const o = [s.pos.x, s.pos.y+1.5, s.pos.z];
   const err = 0.5 + dist*0.05;
@@ -4140,8 +3885,7 @@ function botShoot(s, target, dist, g, gat=false){
   for (let p=0;p<g.pellets;p++){
     if (Math.random() < hitP){
       const part = Math.random()<0.06 ? 'head':'body';
-      if (target.isDecoy !== undefined){ hostDecoyHit(target.isDecoy, g.dmg); }
-      else hostApplyHit(s.idx, target.idx, part, gat?5:s.gun, dist);
+      hostApplyHit(s.idx, target.idx, part, gat?5:s.gun, dist);
     }
   }
 }
@@ -4209,14 +3953,6 @@ function hostTick(dt){
       else if (zn.kind==='gloom'){ o.fx.blind = Math.max(o.fx.blind, .5); }
       else if (zn.kind==='chrono'){ o.fx.tslow = Math.max(o.fx.tslow, .6); o.fx.slow = Math.max(o.fx.slow, .4); }
       else if (zn.kind==='echo'){ o.fx.deaf = Math.max(o.fx.deaf, .8); hostDamage(o, 4*dt, slots[zn.src], false, '聲場'); }
-    }
-  }
-  // 幻系分身到期
-  for (const [did, dc] of decoys){
-    if (t > dc.until){
-      decoys.delete(did);
-      const ev = {t:'ev', k:'decoygone', id:did};
-      bcast(ev); onGameEvent(ev);
     }
   }
   // 蒸汽視線遮蔽到期
@@ -4375,11 +4111,6 @@ function updateAmmoUI(){
     $('gunname').textContent = GUNS[5].name+' · '+GUNS[5].en;
     return;
   }
-  if (slots[myIdx] && CHARS[slots[myIdx].char].el==='phantom'){
-    $('ammo').innerHTML = '∞';
-    $('gunname').textContent = GUNS[6].name+' · '+GUNS[6].en;
-    return;
-  }
   const g = GUNS[me.gun];
   $('ammo').innerHTML = (me.reloading>0?'--':me.ammo) + `<small> / ${g.mag}</small>`;
   $('gunname').textContent = g.name+' · '+g.en;
@@ -4514,7 +4245,6 @@ addEventListener('keydown', e=>{
   }
 });
 function switchGun(i){
-  if (started && slots[myIdx] && CHARS[slots[myIdx].char].el==='phantom') return;   // 幻系不可用槍
   if (i===me.gun) return;
   me.gun=i; me.ammo=GUNS[i].mag; me.reloading=0; me.zoomed=false;
   vmDraw = 1;   // 舉槍動畫
@@ -4526,11 +4256,7 @@ function updateTouchGunUI(){
   const zb = $('btnZoomT');
   if (zb) zb.style.opacity = GUNS[me.gun].zoom ? 1 : .45;   // 鏡鈕常駐，非狙擊時變暗
   const gb = $('btnGunT');
-  const isPh = started && slots[myIdx] && CHARS[slots[myIdx].char].el==='phantom';
-  if (gb){
-    gb.textContent = isPh ? '雙刃' : (['手槍','衝鋒','突擊','霰彈','狙擊'][me.gun] || '換槍');
-    gb.style.opacity = isPh ? .45 : 1;
-  }
+  if (gb) gb.textContent = ['手槍','衝鋒','突擊','霰彈','狙擊'][me.gun] || '換槍';
 }
 function doSkill(){
   if (isHost) localSkill();
