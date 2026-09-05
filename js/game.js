@@ -19,9 +19,12 @@ const EL = {
   earth:  { glyph:'土', name:'土行', color:0xc99a4e, css:'#c99a4e', fx:'命中震懾‧彈落隆岩牆', beats:['water','thunder'] },
   ice:    { glyph:'冰', name:'冰行', color:0xbfeaff, css:'#bfeaff', fx:'命中疊凍‧彈落冰封地', beats:['wood'] },
   thunder:{ glyph:'雷', name:'雷行', color:0xc084fc, css:'#c084fc', fx:'連鎖閃電‧彈落雷場',   beats:['water'] },
-  wind:   { glyph:'風', name:'風行', color:0x7ce8c4, css:'#7ce8c4', fx:'命中擊退‧彈落亂流域', beats:['dark'] },
+  wind:   { glyph:'風', name:'風行', color:0x7ce8c4, css:'#7ce8c4', fx:'命中擊退‧彈落亂流域', beats:['dark','sound'] },
   dark:   { glyph:'暗', name:'暗行', color:0x8b5cf6, css:'#a78bfa', fx:'命中蝕明‧彈落暗幕域', beats:['light'] },
   light:  { glyph:'光', name:'光行', color:0xfff3b8, css:'#fff3b8', fx:'光速彈道‧彈落聖域',   beats:['dark'] },
+  time:   { glyph:'時', name:'時行', color:0x67e8f9, css:'#67e8f9', fx:'命中時滯‧彈落時緩域', beats:[] },
+  sound:  { glyph:'音', name:'音行', color:0xf97316, css:'#fb923c', fx:'命中震盪‧彈落聲場',   beats:['phantom'] },
+  phantom:{ glyph:'幻', name:'幻行', color:0xf472b6, css:'#f9a8d4', fx:'近戰雙刃‧鏡花分身',   beats:['earth'] },
 };
 function elemMult(a, d){
   if (!a || !d) return 1;
@@ -40,6 +43,9 @@ const CHARS = [
   { el:'wind',  name:'疾風‧無蹤', skill:'罡風衝擊', skillCd:10, ultName:'風行奧義・九霄龍捲滅世颶', ultSub:'TEMPEST OF HOWLING SKY' },
   { el:'dark',  name:'影殤‧無明', skill:'暗影遁形', skillCd:14, ultName:'暗行奧義・永夜降臨滅明劫', ultSub:'ETERNAL NIGHT DESCENDS' },
   { el:'light', name:'聖輝‧曦臨', skill:'曦光聖域', skillCd:12, ultName:'光行奧義・審判之曦淨世光', ultSub:'RADIANT JUDGEMENT' },
+  { el:'time',  name:'剎那‧永劫', skill:'時之回溯', skillCd:15, ultName:'時行奧義・剎那即永恆時停', ultSub:'ETERNITY IN A MOMENT' },
+  { el:'sound', name:'鳴神‧聲爆', skill:'迴聲定位', skillCd:12, ultName:'音行奧義・鳴神咆哮滅世濤', ultSub:'ROAR OF THE THUNDER GOD' },
+  { el:'phantom',name:'虛影‧無相', skill:'鏡花分身', skillCd:13, ultName:'幻行奧義・無相千影亂舞', ultSub:'DANCE OF A THOUSAND SHADOWS' },
 ];
 const GUNS = [
   { name:'靈息手槍',   en:'P-DAO 9mm',  dmg:30,  hs:2.0, mag:15, reload:1.6, rpm:420, spread:0.010, auto:false, pellets:1, range:70 },
@@ -49,6 +55,8 @@ const GUNS = [
   { name:'貫日狙擊槍', en:'GR-1 SNIPER',dmg:105, hs:2.0, mag:5,  reload:3.2, rpm:45,  spread:0.002, auto:false, pellets:1, range:400, zoom:true, pierce:1 },
   // index 5：金系大招「萬刃殲滅砲」專用（不可手動切換）
   { name:'萬刃殲滅砲', en:'MYRIAD GATLING', dmg:15, hs:1.6, mag:999, reload:0, rpm:1100, spread:0.035, auto:true, pellets:1, range:80, pierce:3 },
+  // index 6：幻系專用近戰雙刃（幻系不可用槍）
+  { name:'無相雙刃', en:'PHANTOM TWIN BLADES', dmg:46, hs:1.6, mag:0, reload:0, rpm:140, spread:0, auto:true, pellets:1, range:3.6 },
 ];
 const GUN_COUNT = 5;   // 玩家可持有的槍數（不含大招砲）
 const BOT_NAMES = ['哨兵‧甲','哨兵‧乙','哨兵‧丙','傀兵‧子','傀兵‧丑','傀兵‧寅','鐵衛‧壹','鐵衛‧貳',
@@ -172,6 +180,24 @@ function sfx(kind, vol=1){
     o.frequency.exponentialRampToValueAtTime(1244, t+0.05);
     o.connect(g); g.gain.setValueAtTime(0.14*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.09);
     o.start(t); o.stop(t+0.1);
+  } else if (kind==='slash'){
+    // 近戰揮刃：短促風切
+    const len = 0.16;
+    const buf = ac.createBuffer(1, ac.sampleRate*len, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(Math.sin(Math.PI*i/d.length), 1.5);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type='bandpass'; f.Q.value=1.2;
+    f.frequency.setValueAtTime(900, t); f.frequency.exponentialRampToValueAtTime(3600, t+len);
+    src.connect(f); f.connect(g);
+    g.gain.setValueAtTime(0.4*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+len);
+    src.start(t);
+  } else if (kind==='sonar'){
+    // 迴聲定位：純音脈衝
+    const o = ac.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(1180, t);
+    o.frequency.exponentialRampToValueAtTime(880, t+0.35);
+    o.connect(g); g.gain.setValueAtTime(0.18*vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+0.4);
+    o.start(t); o.stop(t+0.42);
   } else if (kind==='steam'){
     const len = 0.9;
     const buf = ac.createBuffer(1, ac.sampleRate*len, ac.sampleRate);
@@ -193,7 +219,8 @@ function mkSlot(i){
     hp:100, alive:true, respawnAt:0,
     pos:new THREE.Vector3(), ry:0, rx:0, moving:false, gun:2,
     kills:0, deaths:0, score:0, streak:0, ult:0,
-    fx:{burn:0,burnSrc:-1,slow:0,root:0,stun:0,shield:0,regen:0,haste:0,gat:0,frz:0,frzT:0,blind:0,stealth:0},
+    fx:{burn:0,burnSrc:-1,slow:0,root:0,stun:0,shield:0,regen:0,haste:0,gat:0,frz:0,frzT:0,blind:0,stealth:0,
+        tslow:0,deaf:0,silence:0,reveal:0},
     skillCd:0,
     bot:null, avatar:null,
   };
@@ -341,6 +368,7 @@ function hostOnData(conn, d){
   else if (d.t==='whit'){ hostWallHit(d.id, d.dmg||20); }
   else if (d.t==='bhit'){ hostBarrelHit(conn._idx, d.id|0, d.dmg||20); }
   else if (d.t==='ghit'){ hostGroundHit(conn._idx, +d.x||0, +d.y||0, +d.z||0); }
+  else if (d.t==='dhit'){ hostDecoyHit(d.id|0, d.dmg||20); }
   else if (d.t==='skill'){ hostUseSkill(conn._idx, d); }
   else if (d.t==='ult'){ hostUseUlt(conn._idx); }
 }
@@ -1266,6 +1294,8 @@ const me = {
   gun:2, ammo:GUNS[2].mag, reloading:0, fireCd:0, recoil:0, spreadHeat:0,
   zoomed:false, bobT:0, dead:false, nades:2,
   pose:0, eyeH:1.62, slideT:0, slideDir:new THREE.Vector3(),   // 0站 1蹲 2滑壘
+  hist:[], _histT:0,          // 時系：位置/血量歷史（每 0.25s 一筆，約 3 秒前可回溯）
+  _swingT:0, _swingSide:1,    // 幻系：近戰揮刃動畫
 };
 const keys = {};
 let locked = false;
@@ -1390,6 +1420,14 @@ function updateLocal(dt){
   slot.gun = me.gun;
   slot.pose = me.pose;
 
+  // 時系：記錄位置/血量歷史（時之回溯用；hist[0] ≈ 3 秒前）
+  me._histT -= dt;
+  if (me._histT <= 0){
+    me._histT = 0.25;
+    me.hist.push({x:me.pos.x, y:me.pos.y, z:me.pos.z, hp:slot.hp});
+    if (me.hist.length > 13) me.hist.shift();
+  }
+
   // 視線高度平滑過渡（站 1.62 / 蹲 1.08 / 滑壘 0.78）
   const eyeT = me.pose===2 ? 0.78 : me.pose===1 ? 1.08 : 1.62;
   me.eyeH += (eyeT - me.eyeH) * Math.min(1, dt*11);
@@ -1424,6 +1462,15 @@ function updateLocal(dt){
                            - vmDraw*0.24 - rl*(0.06 + Math.sin(now()*7)*0.015);
     viewmodel.rotation.z = -vmSwayX*1.7 - mv*Math.sin(me.bobT)*0.012;
     viewmodel.rotation.x = 0.02 + vmSwayY*2.2 - vmDraw*1.0 - rl*0.38;
+    // 幻系近戰：揮刃斬擊動畫（左右交替橫掃）
+    if (me._swingT > 0){
+      const sk = clamp((now() - me._swingT) / 0.28, 0, 1);
+      const arc = Math.sin(sk*Math.PI);
+      viewmodel.rotation.y = 0.05 + me._swingSide * arc * 1.1;
+      viewmodel.rotation.z += me._swingSide * arc * 0.6;
+      viewmodel.position.x += -me._swingSide * arc * 0.12;
+      if (sk >= 1) me._swingT = 0;
+    }
   }
 
   // 開火 / 換彈
@@ -1459,6 +1506,7 @@ function currentSpread(g, gat){
   if (me.pose === 1) sp *= 0.55;                           // 蹲姿更穩
   if (me.pose === 2) sp = sp*1.5 + g.spread*0.6;           // 滑壘中射擊不穩
   if (gat) sp = Math.max(sp, g.spread * 0.9);              // 殲滅砲恆定掃射散佈
+  if (slots[myIdx] && slots[myIdx].fx.deaf>0) sp += g.spread * 1.5;  // 音系震盪：失聰手抖
   if (me.zoomed && g.zoom) sp *= 0.1;                      // 開鏡穩定
   return sp;
 }
@@ -1470,10 +1518,12 @@ function shootTargets(){
     if (s.idx===myIdx || s.ctrl==='empty' || !s.alive || !s.avatar) continue;
     list.push(...s.avatar.parts);
   }
+  for (const v of decoyVis.values()) list.push(...v.parts);   // 幻系分身可被命中
   return list;
 }
 function tryFire(){
   const gat = slots[myIdx].fx.gat > 0;             // 萬刃殲滅砲形態
+  if (!gat && CHARS[slots[myIdx].char].el==='phantom'){ meleeAttack(); return; }  // 幻系：只有近戰
   const g = gat ? GUNS[5] : GUNS[me.gun];
   if (!gat && me.reloading>0){   // 換彈中按扳機：機械空響提示
     if (now() - (tryFire._ck||0) > .3){ tryFire._ck = now(); sfx('click', .7); }
@@ -1481,7 +1531,7 @@ function tryFire(){
   }
   if (me.fireCd > 0) return;
   if (!gat && me.ammo <= 0){ startReload(); return; }
-  me.fireCd = 60/g.rpm;
+  me.fireCd = 60/g.rpm * (slots[myIdx].fx.tslow>0 ? 1.6 : 1);   // 時滯：射速被拖慢
   if (!gat) me.ammo--;
   // 準星零誤差：先取「開火當下」的準星指向與散佈，後座力與熱度只影響下一發
   const aimPitch = me.pitch + me.recoil;   // 當下準星實際指向（含既有後座抬升）
@@ -1517,6 +1567,12 @@ function tryFire(){
         end = h.point;
         break;
       }
+      if (ud.decoy !== undefined){   // 幻系分身：可被射爆
+        showHitmark(false); sfx('hit');
+        reportDecoyHit(ud.decoy, g.dmg);
+        elemHitFX(h.point, 'phantom');
+        end = h.point; break;
+      }
       if (ud.barrel !== undefined){
         reportBarrelHit(ud.barrel, g.dmg);
         sparkBurst(h.point, 0xffcc66, 8, 4);
@@ -1531,6 +1587,24 @@ function tryFire(){
       }
       // 場景表面
       impactElem(h.point, dir, myEl, false);
+      // 金系強化：跳彈是真的——反彈射線可傷到掩體後的敵人（傷害衰減）
+      if (myEl==='metal' && !gat && Math.random()<0.35 && h.face){
+        const n2 = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+        const ref = dir.clone().reflect(n2).normalize();
+        const rc2 = new THREE.Raycaster(h.point.clone().addScaledVector(ref, .05), ref, 0, 14);
+        const rh = rc2.intersectObjects(shootTargets(), false);
+        for (const r2 of rh){
+          const ud2 = r2.object.userData || {};
+          if (ud2.slot !== undefined){
+            showHitmark(false); sfx('hit', .7);
+            reportHit(ud2.slot, 'body', me.gun, g.range*1.55);   // 以遠距衰減折算跳彈傷害
+            elemHitFX(r2.point, 'metal');
+            tracer(h.point, r2.point, 0xffe9a0);
+            break;
+          }
+          if (!ud2.barrel && !ud2.wallId){ tracer(h.point, r2.point, 0xffe9a0); break; }
+        }
+      }
       if (h.face){
         const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
         addDecal(h.point, n, rand(.04,.07), 20);
@@ -1580,11 +1654,62 @@ function impactElem(point, dir, el, isRock){
   } else if (el==='light'){
     sparkBurst(point, 0xfff8d8, 14, 5.5);
     spawnSmoke(point.x, point.y, point.z, {n:1, size:.7, color:0xfff3b8, add:true, rise:.3, life:.25, grow:1.4, opacity:.8, spread:.05});
+  } else if (el==='time'){
+    sparkBurst(point, 0x67e8f9, 10, 4);
+    spriteBurst(point, TEX.ring, 0x67e8f9, .12, .9, .3, .8);   // 時紋漣漪
+  } else if (el==='sound'){
+    sparkBurst(point, 0xfb923c, 8, 4);
+    spriteBurst(point, TEX.ring, 0xfb923c, .1, 1.4, .25, .7);  // 聲波環
+  } else if (el==='phantom'){
+    sparkBurst(point, 0xf9a8d4, 8, 4);
+    spawnSmoke(point.x, point.y, point.z, {n:2, size:.5, color:0xf472b6, add:true, rise:.3, life:.4, grow:.8, opacity:.5, spread:.1});
   } else {
     sparkBurst(point, 0xd8c090, 6, 3);
     spawnSmoke(point.x, point.y, point.z, {n:2, size:.6, color:0xa08b62, rise:.6, life:.9, grow:.7, opacity:.5, spread:.15});
   }
   if (isRock || Math.random()<.4) spawnDebris(point.x, point.y, point.z, isRock?0x8a6a3c:0x777770, 2, {min:.03,max:.08,spd:3});
+}
+/* ---- 幻系近戰：無相雙刃（三向短距斬擊） ---- */
+function meleeAttack(){
+  if (me.fireCd > 0 || me.dead) return;
+  const g = GUNS[6];
+  me.fireCd = 60/g.rpm * (slots[myIdx].fx.tslow>0 ? 1.6 : 1);
+  me._swingSide = -me._swingSide;
+  me._swingT = now();
+  sfx('slash', .9);
+  slashFX();
+  const origin = camera.position.clone();
+  for (const off of [0, 0.14, -0.14]){
+    const dir = new THREE.Vector3(0,0,-1)
+      .applyEuler(new THREE.Euler(me.pitch, me.yaw + off, 0, 'YXZ'));
+    raycaster.set(origin, dir);
+    raycaster.far = g.range;
+    const hits = raycaster.intersectObjects(shootTargets(), false);
+    if (!hits.length) continue;
+    const h = hits[0], ud = h.object.userData || {};
+    if (ud.slot !== undefined){
+      showHitmark(ud.part==='head'); sfx('hit');
+      reportHit(ud.slot, ud.part, 6, h.distance);
+      elemHitFX(h.point, 'phantom');
+      break;
+    }
+    if (ud.decoy !== undefined){ reportDecoyHit(ud.decoy, g.dmg); elemHitFX(h.point, 'phantom'); break; }
+    if (ud.barrel !== undefined){ reportBarrelHit(ud.barrel, g.dmg); sparkBurst(h.point, 0xf9a8d4, 6, 3); break; }
+    if (ud.wallId !== undefined){ reportWallHit(ud.wallId, g.dmg); impactElem(h.point, dir, 'phantom', true); break; }
+    if (h.distance < 1.8) sparkBurst(h.point, 0xf9a8d4, 4, 2);   // 刃劃過牆面
+  }
+}
+function slashFX(){
+  // 鏡頭前的粉紅刃光弧
+  const p = camera.localToWorld(new THREE.Vector3(me._swingSide*0.3, -0.05, -1.1));
+  spriteBurst(p, TEX.flash, 0xf9a8d4, .5, 1.4, .18);
+  const a = camera.localToWorld(new THREE.Vector3(me._swingSide*0.8, 0.25, -1));
+  const b = camera.localToWorld(new THREE.Vector3(-me._swingSide*0.8, -0.25, -1.2));
+  tracer(a, b, 0xf9a8d4);
+}
+function reportDecoyHit(id, dmg){
+  if (isHost) hostDecoyHit(id, dmg);
+  else if (conns[0]) send(conns[0], {t:'dhit', id, dmg});
 }
 function reportBarrelHit(id, dmg){
   if (isHost) hostBarrelHit(myIdx, id, dmg);
@@ -1595,6 +1720,7 @@ function reportGroundHit(pt){
   else if (conns[0]) send(conns[0], {t:'ghit', x:+pt.x.toFixed(1), y:+pt.y.toFixed(1), z:+pt.z.toFixed(1)});
 }
 function startReload(){
+  if (slots[myIdx] && CHARS[slots[myIdx].char].el==='phantom') return;   // 雙刃不需換彈
   if (me.reloading>0 || me.ammo===GUNS[me.gun].mag) return;
   me.reloading = GUNS[me.gun].reload;
   sfx('reload');
@@ -1690,6 +1816,33 @@ function rebuildViewmodel(){
     viewmodel.add(m); return m;
   };
   let len = 0.5;
+  if (CHARS[slots[myIdx]?.char ?? selChar].el==='phantom'){
+    // 幻系專屬：無相雙刃（不持槍）——鋼刃本體＋粉色能量刃鋒
+    const blade = new THREE.MeshStandardMaterial({color:0xb9c0c9, metalness:.92, roughness:.18});
+    const edge  = new THREE.MeshStandardMaterial({color:0xf9a8d4, emissive:0xf472b6, emissiveIntensity:1.4,
+      transparent:true, opacity:.9});
+    const grip  = new THREE.MeshStandardMaterial({color:0x2a2130, roughness:.7});
+    const mk = (x, tilt)=>{
+      const gp = new THREE.Group();
+      const b1 = new THREE.Mesh(new THREE.BoxGeometry(.016,.045,.42), blade); b1.position.z = -.26;
+      const eg = new THREE.Mesh(new THREE.BoxGeometry(.006,.05,.42), edge); eg.position.set(0,-.004,-.26);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(.02,.1,4), blade);
+      tip.rotation.x = -Math.PI/2; tip.position.z = -.51;
+      const gd = new THREE.Mesh(new THREE.BoxGeometry(.08,.018,.026), M.steel); gd.position.z = -.03;
+      const hd = new THREE.Mesh(new THREE.BoxGeometry(.026,.04,.12), grip); hd.position.z = .06;
+      gp.add(b1, eg, tip, gd, hd);
+      gp.position.set(x, -.03, -.1); gp.rotation.z = tilt; gp.rotation.y = -x*.5;
+      viewmodel.add(gp);
+    };
+    mk(0.05, .12); mk(-0.16, -.2);
+    B(.044,.011,.05, M.elem, 0,.06,-.02);   // 屬性紋章
+    if (muzzleSprite) muzzleSprite.position.set(0,0,-999);   // 近戰無槍口焰
+    viewmodel.position.set(0.22,-0.2,-0.38);
+    viewmodel.rotation.y = 0.05; viewmodel.rotation.x = 0.02;
+    viewmodel.scale.setScalar(0.8);
+    if (flashLight) flashLight.color.set(e.color);
+    return;
+  }
   switch (me.gun){
     case 0: // 靈息手槍：滑套、擊錘、握把、扳機護弓、前後準星
       len = 0.3;
@@ -1775,7 +1928,7 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
   const att = slots[attIdx], vic = slots[vicIdx];
   if (!att || !vic || !att.alive || !vic.alive || att.team===vic.team) return;
   if (vic.fx.shield > 0){ addUlt(att, 2); return; }
-  const g = GUNS[clamp(gunIdx,0,5)];
+  const g = GUNS[clamp(gunIdx,0,6)];
   const aEl = CHARS[att.char].el, vEl = CHARS[vic.char].el;
   let dmg = g.dmg;
   const falloff = clamp(1 - Math.max(0, dist-g.range)/g.range, 0.35, 1);
@@ -1801,20 +1954,20 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
     vic.fx.burn = 3; vic.fx.burnSrc = attIdx;               // 火：灼燒
   }
   if (aEl==='water'){
-    vic.fx.slow = 2;                                        // 水：緩速
+    vic.fx.slow = 2.5;                                      // 水：緩速（強化）
     if (vic.fx.burn > 0){                                   // 五行反應：水剋火 → 蒸汽熄滅+額外傷害
-      vic.fx.burn = 0; dmg += 12;
+      vic.fx.burn = 0; dmg += 18;
       const vp = vic.idx===myIdx ? me.pos : vic.pos;
       hostSteam(vp.x, vp.z);
     }
   }
-  if (aEl==='wood'){ hostHeal(att, dmg*0.15); }             // 木：吸血
-  if (aEl==='earth' && Math.random()<0.15){ vic.fx.stun = Math.max(vic.fx.stun, 0.5); } // 土：震懾
+  if (aEl==='wood'){ hostHeal(att, dmg*0.22); }             // 木：吸血（強化）
+  if (aEl==='earth' && Math.random()<0.20){ vic.fx.stun = Math.max(vic.fx.stun, 0.5); } // 土：震懾（強化）
   if (aEl==='ice'){                                          // 冰：疊凍，三層冰封
     if (vic.fx.burn > 0){ vic.fx.burn = 0; dmg += 10; }      // 冰滅火
     vic.fx.frz++; vic.fx.frzT = 4;
     if (vic.fx.frz >= 3){
-      vic.fx.frz = 0; vic.fx.stun = Math.max(vic.fx.stun, 1.2); vic.fx.slow = Math.max(vic.fx.slow, 2.5);
+      vic.fx.frz = 0; vic.fx.stun = Math.max(vic.fx.stun, 1.5); vic.fx.slow = Math.max(vic.fx.slow, 2.5);
       const vp = vic.idx===myIdx ? me.pos : vic.pos;
       const ev = {t:'ev', k:'frzfx', x:+vp.x.toFixed(1), y:+(vp.y+1).toFixed(1), z:+vp.z.toFixed(1)};
       bcast(ev); onGameEvent(ev);
@@ -1827,19 +1980,19 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
     const ap = att.idx===myIdx ? me.pos : att.pos;
     const a = Math.atan2(vp.z-ap.z, vp.x-ap.x);
     if (vic.ctrl==='bot'){
-      vic.pos.x = clamp(vic.pos.x + Math.cos(a)*1.0, -57, 57);
-      vic.pos.z = clamp(vic.pos.z + Math.sin(a)*1.0, -57, 57);
+      vic.pos.x = clamp(vic.pos.x + Math.cos(a)*1.3, -57, 57);
+      vic.pos.z = clamp(vic.pos.z + Math.sin(a)*1.3, -57, 57);
     } else {
-      const pe = {t:'ev', k:'push', i:vic.idx, x:+(Math.cos(a)*6).toFixed(1), z:+(Math.sin(a)*6).toFixed(1), y:1.5};
+      const pe = {t:'ev', k:'push', i:vic.idx, x:+(Math.cos(a)*8).toFixed(1), z:+(Math.sin(a)*8).toFixed(1), y:1.8};
       bcast(pe); onGameEvent(pe);
     }
   }
-  if (aEl==='dark'){ vic.fx.blind = Math.max(vic.fx.blind, 1.3); }   // 暗：蝕明（視野遭黑幕吞噬）
+  if (aEl==='dark'){ vic.fx.blind = Math.max(vic.fx.blind, 1.6); }   // 暗：蝕明（強化）
   if (aEl==='light' && vic.fx.blind > 0){ vic.fx.blind = 0; dmg += 12; } // 光：淨化暗蝕 → 聖光爆發
   if (aEl==='thunder'){                                      // 雷：連鎖閃電
     const vp = vic.idx===myIdx ? me.pos : vic.pos;
     const wet = vic.fx.slow > 0;                              // 潮濕/受寒 → 超導
-    const chainP = wet ? 0.6 : 0.15;
+    const chainP = wet ? 0.6 : 0.20;
     if (Math.random() < 0.08) vic.fx.stun = Math.max(vic.fx.stun, 0.35);  // 麻痺
     if (Math.random() < chainP){
       for (const o of slots){
@@ -1854,6 +2007,16 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
       }
     }
   }
+  if (aEl==='time'){                                         // 時：時滯——動作與射速被拖慢
+    vic.fx.tslow = Math.max(vic.fx.tslow, 1.5);
+    vic.fx.slow = Math.max(vic.fx.slow, 1.2);
+    if (vic.ctrl==='bot' && vic.bot) vic.bot.fireCd = (vic.bot.fireCd||0) + 0.35;
+  }
+  if (aEl==='sound'){                                        // 音：震盪——耳鳴失聰、瞄準劇晃
+    vic.fx.deaf = Math.max(vic.fx.deaf, 1.2);
+    if (vic.ctrl==='bot' && vic.bot) vic.bot.aimDelay = Math.max(vic.bot.aimDelay||0, 0.35);
+  }
+  if (aEl==='phantom'){ vic.fx.slow = Math.max(vic.fx.slow, 0.8); }  // 幻刃：殘影滯身
   hostDamage(vic, dmg, att, part==='head', g.name);
   addUlt(att, dmg*0.14);
 }
@@ -1913,6 +2076,8 @@ function hostGroundHit(idx, x, y, z){
   else if (el==='wind'){ hostAddZone('gale', x, z, 2.2, 4.5, idx); }
   else if (el==='dark'){ hostAddZone('gloom', x, z, 2.2, 5, idx); }
   else if (el==='light'){ hostAddZone('sanct', x, z, 2.0, 5, idx); }
+  else if (el==='time'){ hostAddZone('chrono', x, z, 2.0, 4.5, idx); }
+  else if (el==='sound'){ hostAddZone('echo', x, z, 2.0, 4.5, idx); }
   else if (el==='earth'){
     if (y > 1.6) return;                       // 打太高不隆起
     for (const o of slots){                    // 避免把人直接卡進石頭
@@ -1966,10 +2131,19 @@ function hostExplodeBarrel(attIdx, id){
 function localSkill(){
   const s = slots[myIdx];
   if (me.dead || (isHost && s.skillCd > 0)) return;
+  if (s.fx.silence > 0){ centerMsg('技能被聲爆封鎖！'); sfx('click', .9); return; }
   if (isHost) s.skillCd = CHARS[s.char].skillCd;
   const dir = new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(me.pitch, me.yaw, 0, 'YXZ'));
   const data = {t:'skill', dir:[+dir.x.toFixed(3),+dir.y.toFixed(3),+dir.z.toFixed(3)],
                 p:[+me.pos.x.toFixed(2),+me.pos.y.toFixed(2),+me.pos.z.toFixed(2)]};
+  // 時系：時之回溯——傳送回 3 秒前的位置並回復當時血量
+  if (CHARS[s.char].el==='time' && me.hist.length){
+    const h = me.hist[0];
+    data.rp = [+h.x.toFixed(2), +h.y.toFixed(2), +h.z.toFixed(2)];
+    data.rhp = Math.round(h.hp);
+    me.pos.set(h.x, h.y, h.z); me.vel.set(0,0,0);
+    me.hist.length = 0;
+  }
   if (isHost) hostUseSkill(myIdx, data);
   else if (conns[0]) send(conns[0], data);
   // 火系衝刺為本地位移
@@ -1981,6 +2155,7 @@ function localSkill(){
 }
 function hostUseSkill(idx, d){
   const s = slots[idx]; if(!s || !s.alive) return;
+  if (s.fx.silence > 0) return;   // 音大招：技能封鎖
   const el = CHARS[s.char].el;
   const ev = {t:'ev', k:'skill', i:idx, el, p:d.p, dir:d.dir};
   if (el==='earth'){
@@ -2058,18 +2233,56 @@ function hostUseSkill(idx, d){
       }
     }
   }
-  else if (el==='dark'){ s.fx.stealth = 3.5; }   // 暗影遁形：短暫匿蹤（敵人與 AI 皆不可見）
+  else if (el==='dark'){ s.fx.stealth = 4; }   // 暗影遁形：短暫匿蹤（強化）
   else if (el==='light'){ hostAddZone('sanct', d.p[0], d.p[2], 5, 6, idx); }  // 曦光聖域：治療我方
+  else if (el==='time'){
+    // 時之回溯：玩家已本地傳送（d.rp）；主機補血並轉播特效；AI 無歷史則急療加速
+    if (d.rp){
+      if (s.ctrl!=='local') s.pos.set(d.rp[0], d.rp[1], d.rp[2]);
+      s.hp = clamp(Math.max(s.hp, Math.min(d.rhp||0, 100)), 1, 100);
+      updateHpBar(s);
+      ev.rp = d.rp;
+    } else {
+      hostHeal(s, 25); s.fx.haste = 2;
+    }
+  }
+  else if (el==='sound'){
+    // 迴聲定位：標記 32m 內所有敵人（穿牆可見、破匿蹤）
+    for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team!==s.team){
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      if ((op.x-d.p[0])**2 + (op.z-d.p[2])**2 < 1024){
+        o.fx.reveal = 5;
+        if (o.fx.stealth > 0) o.fx.stealth = 0;   // 聲波破匿蹤
+      }
+    }
+  }
+  else if (el==='phantom'){
+    // 鏡花分身：身側生成兩具誘餌分身（可被打爆、吸引 AI 火力）
+    const f = new THREE.Vector3(d.dir[0],0,d.dir[2]).normalize();
+    const r = new THREE.Vector3(-f.z,0,f.x);
+    ev.dc = [];
+    for (const side of [1.4, -1.4]){
+      const dx = clamp(d.p[0]+r.x*side, -56, 56), dz = clamp(d.p[2]+r.z*side, -56, 56);
+      const did = ++decoySeq;
+      decoys.set(did, {x:dx, z:dz, ry:Math.atan2(f.x,f.z)+Math.PI, hp:40, until:now()+12, team:s.team, src:idx});
+      ev.dc.push([did, +dx.toFixed(1), +dz.toFixed(1), +(Math.atan2(f.x,f.z)+Math.PI).toFixed(2)]);
+    }
+    ev.tm = s.team; ev.ch = s.char; ev.nm = s.name;
+    while (decoys.size > 6){ const old = decoys.keys().next().value;
+      decoys.delete(old); const de = {t:'ev', k:'decoygone', id:old}; bcast(de); onGameEvent(de); }
+  }
   bcast(ev); onGameEvent(ev);
 }
 function localUlt(){
   const s = slots[myIdx];
   if (me.dead || s.ult < 100) return;
+  if (s.fx.silence > 0){ centerMsg('大招被聲爆封鎖！'); sfx('click', .9); return; }
   if (isHost) hostUseUlt(myIdx);
   else if (conns[0]) send(conns[0], {t:'ult'});
 }
 function hostUseUlt(idx){
   const s = slots[idx]; if(!s || !s.alive || s.ult<100) return;
+  if (s.fx.silence > 0) return;   // 音大招：技能封鎖
   s.ult = 0;
   const el = CHARS[s.char].el;
   const ev = {t:'ev', k:'ult', i:idx, el, p:[+s.pos.x.toFixed(1),+s.pos.y.toFixed(1),+s.pos.z.toFixed(1)]};
@@ -2160,6 +2373,53 @@ function hostUseUlt(idx){
       o.fx.blind = Math.max(o.fx.blind, 2.2);
     }
     hostAddZone('sanct', s.pos.x, s.pos.z, 6, 7, idx);
+  } else if (el==='time'){
+    // 剎那即永恆：時停——全場敵人凍結、時滯纏身
+    for (const o of foes){
+      hostDamage(o, 30*elemMult('time',CHARS[o.char].el), s, false, '時停');
+      o.fx.stun = Math.max(o.fx.stun, 2.5);
+      o.fx.tslow = Math.max(o.fx.tslow, 4);
+    }
+  } else if (el==='sound'){
+    // 鳴神咆哮：34m 內重創震聾＋技能封鎖＋衝擊波擊飛，留下巨型聲場
+    for (const o of foes){
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      const dx = op.x-s.pos.x, dz = op.z-s.pos.z, dl = Math.hypot(dx,dz)||1;
+      if (dl > 34) continue;
+      hostDamage(o, 55*elemMult('sound',CHARS[o.char].el), s, false, '鳴神咆哮');
+      o.fx.silence = Math.max(o.fx.silence, 4.5);
+      o.fx.deaf = Math.max(o.fx.deaf, 3);
+      if (o.ctrl==='bot'){
+        o.pos.x = clamp(o.pos.x + dx/dl*3, -57, 57);
+        o.pos.z = clamp(o.pos.z + dz/dl*3, -57, 57);
+        o.fx.stun = Math.max(o.fx.stun, .6);
+      } else {
+        const pe = {t:'ev', k:'push', i:o.idx, x:+(dx/dl*12).toFixed(1), z:+(dz/dl*12).toFixed(1), y:4};
+        bcast(pe); onGameEvent(pe);
+      }
+    }
+    hostAddZone('echo', s.pos.x, s.pos.z, 6, 5, idx);
+  } else if (el==='phantom'){
+    // 無相千影亂舞：護體殘影，對 20m 內至多 6 名敵人連環瞬身斬
+    s.fx.shield = 1.6;
+    const near = foes.map(o=>{
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      return {o, d:Math.hypot(op.x-s.pos.x, op.z-s.pos.z)};
+    }).filter(x=> x.d<20).sort((a,b)=> a.d-b.d).slice(0,6);
+    near.forEach((x, i)=>{
+      setTimeout(()=>{
+        if (!started || !x.o.alive || !s.alive) return;
+        const op = x.o.idx===myIdx ? me.pos : x.o.pos;
+        hostDamage(x.o, 52*elemMult('phantom',CHARS[x.o.char].el), s, false, '千影亂舞');
+        const fe = {t:'ev', k:'fstep', x:+op.x.toFixed(1), y:+(op.y+1.2).toFixed(1), z:+op.z.toFixed(1)};
+        bcast(fe); onGameEvent(fe);
+        // 施術者瞬身到目標背後
+        const bx = clamp(op.x+rand(-1.2,1.2), -56, 56), bz = clamp(op.z+rand(-1.2,1.2), -56, 56);
+        if (idx===myIdx){ me.pos.set(bx, op.y, bz); me.vel.set(0,0,0); }
+        else if (s.ctrl==='bot'){ s.pos.set(bx, op.y, bz); }
+        else { const te = {t:'ev', k:'tp', i:idx, p:[+bx.toFixed(1), +op.y.toFixed(1), +bz.toFixed(1)]}; bcast(te); }
+      }, 300 + i*220);
+    });
   }
   bcast(ev); onGameEvent(ev);
 }
@@ -2234,6 +2494,27 @@ function onGameEvent(d){
       ringFX(new THREE.Vector3(d.p[0], .15, d.p[2]), 0xffe98a, 10);
       lightPillarFX(d.p[0], d.p[2], .8);
     }
+    if (d.el==='time' && d.rp){   // 時之回溯：新舊位置間的時光弧
+      const a2 = new THREE.Vector3(d.p[0], 1.3, d.p[2]);
+      const b2 = new THREE.Vector3(d.rp[0], 1.3, d.rp[2]);
+      arcLine(a2, b2, .8, 0x67e8f9);
+      spriteBurst(a2, TEX.ring, 0x67e8f9, .3, 2.2, .5, .9);
+      spriteBurst(b2, TEX.ring, 0x67e8f9, 2.2, .3, .5, .9);   // 目的端收縮環
+      sparkBurst(b2, 0x67e8f9, 14, 5);
+      sfx('zap', .5);
+      if (d.i===myIdx) centerMsg('時 之 回 溯');
+    }
+    if (d.el==='sound'){          // 迴聲定位：橙色聲波三連環
+      for (let i2=0;i2<3;i2++)
+        setTimeout(()=> waveRing(d.p[0], d.p[2], 0xfb923c, 32, 1, 1.6+i2*.8), i2*160);
+      sfx('sonar', .9);
+      if (d.i===myIdx) centerMsg('迴 聲 定 位 — 敵蹤盡現');
+    }
+    if (d.el==='phantom' && d.dc){ // 鏡花分身：生成誘餌
+      for (const [did, dx, dz, dry] of d.dc) spawnDecoyVis(did, dx, dz, dry, d.tm, d.ch, d.nm);
+      sfx('slash', .7);
+      if (d.i===myIdx) centerMsg('鏡 花 分 身');
+    }
   }
   else if (d.k==='ult'){
     const s = slots[d.i], c = CHARS[s.char], e = EL[c.el];
@@ -2295,6 +2576,25 @@ function onGameEvent(d){
       spawnSmoke(d.p[0], .6, d.p[2], {n:16, size:2.6, color:0xe8f6ff, rise:1.2, life:2.4, grow:1.5, opacity:.6, spread:8});
     }
     if (c.el==='thunder'){ shakeCam(.4); sfx('zap'); thunderSkyFX(); }   // 天幕壓暗＋天際電弧；落雷由 boltset 呈現
+    if (c.el==='time'){   // 時停：全畫面青藍時痕＋世界凝滯（子彈幾乎靜止）
+      chronoStopUntil = now() + 2.5;
+      const co = $('chronoOv');
+      if (co){ co.style.opacity = 1; setTimeout(()=>{ co.style.opacity = 0; }, 2500); }
+      waveRing(d.p[0], d.p[2], 0x67e8f9, 50, 2, 3);
+      spriteBurst(new THREE.Vector3(d.p[0], 1.5, d.p[2]), TEX.ring, 0x67e8f9, .5, 8, 1.2, .9);
+      sfx('zap', .8);
+    }
+    if (c.el==='sound'){  // 鳴神咆哮：層層聲爆衝擊環
+      shakeCam(.5);
+      for (let i2=0;i2<5;i2++)
+        setTimeout(()=>{ waveRing(d.p[0], d.p[2], i2%2?0xffd9b0:0xfb923c, 40, 1.4, 3+i2); sfx('boom', .5); }, i2*200);
+      spawnSmoke(d.p[0], 1, d.p[2], {n:12, size:2, color:0xffc9a0, add:true, rise:1.5, life:1, grow:1.6, opacity:.5, spread:3});
+    }
+    if (c.el==='phantom'){ // 千影亂舞：殘影亂閃
+      shakeCam(.3);
+      for (let i2=0;i2<6;i2++)
+        setTimeout(()=> sparkBurst(new THREE.Vector3(d.p[0]+rand(-4,4), rand(.5,2), d.p[2]+rand(-4,4)), 0xf472b6, 8, 5), i2*180);
+    }
   }
   else if (d.k==='wallgone'){ removeWall(d.id); }
   else if (d.k==='mwall'){ spawnMiniWall(d.wid, d.x, d.z, d.ry); }
@@ -2319,6 +2619,18 @@ function onGameEvent(d){
     if (i>=0){ const n = nades[i]; scene.remove(n.group); nades.splice(i,1); nadeExplodeVis(n, d.x, d.y, d.z); }
   }
   else if (d.k==='boomfx'){ explosionFX(d.x, d.y, d.z, .7); }
+  else if (d.k==='decoygone'){ removeDecoyVis(d.id); }
+  else if (d.k==='tp'){   // 幻大招：施術者瞬身（net 玩家本地執行）
+    if (d.i===myIdx && !me.dead){ me.pos.set(d.p[0], d.p[1], d.p[2]); me.vel.set(0,0,0); }
+  }
+  else if (d.k==='fstep'){   // 千影亂舞：目標處的粉紅斬閃
+    const p = new THREE.Vector3(d.x, d.y, d.z);
+    spriteBurst(p, TEX.flash, 0xf9a8d4, .4, 1.8, .2);
+    sparkBurst(p, 0xf472b6, 12, 6);
+    arcLine(p.clone().add(new THREE.Vector3(rand(-1,1), .8, rand(-1,1))),
+            p.clone().add(new THREE.Vector3(rand(-1,1), -.6, rand(-1,1))), .3, 0xf9a8d4);
+    sfx('slash', .8);
+  }
   else if (d.k==='barrel'){
     const b = barrels.get(d.id);
     if (b && !b.dead){
@@ -2336,6 +2648,60 @@ function onGameEvent(d){
         me.vel.x += Math.cos(a)*kb; me.vel.z += Math.sin(a)*kb; me.vel.y += (1-dd/8)*7;
       }
     }
+  }
+}
+
+/* ---------- 幻系分身（誘餌）：主機裁決、各端渲染、AI 會上當 ---------- */
+const decoys = new Map();      // 主機邏輯 id -> {x,z,ry,hp,until,team,src}
+const decoyVis = new Map();    // 各端視覺 id -> {group, parts}
+let decoySeq = 0;
+function spawnDecoyVis(id, x, z, ry, team, charIdx, name){
+  if (decoyVis.has(id)) return;
+  const e = EL[CHARS[charIdx]?.el || 'phantom'];
+  const tc = team==='red' ? 0x8a4038 : 0x35507a;
+  const group = new THREE.Group();
+  const parts = [];
+  const mk = (w,h,d, color, px,py,pz)=>{
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+      new THREE.MeshStandardMaterial({color, roughness:.8, transparent:true, opacity:.92}));
+    m.position.set(px,py,pz); m.castShadow = true;
+    m.userData = {decoy:id};
+    group.add(m); parts.push(m);
+    return m;
+  };
+  mk(.5,.62,.3, tc, 0,1.08,0);                     // 軀幹
+  mk(.3,.3,.3, 0xd7b08c, 0,1.62,0).userData = {decoy:id};  // 頭
+  mk(.3,.12,.32, 0x3a3f45, 0,1.83,0);              // 頭盔
+  mk(.16,.7,.2, 0x3f4a42, -.14,.35,0);             // 腿
+  mk(.16,.7,.2, 0x3f4a42, .14,.35,0);
+  mk(.13,.5,.18, tc, -.33,1.15,0);                 // 臂
+  mk(.13,.5,.18, tc, .33,1.15,0);
+  // 屬性微光：分身通體泛出幻彩
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color:e.color,
+    transparent:true, opacity:.35, depthWrite:false, blending:THREE.AdditiveBlending}));
+  glow.scale.set(1.6, 2.2, 1); glow.position.y = 1.1;
+  group.add(glow);
+  group.position.set(x, 0, z);
+  group.rotation.y = ry;
+  scene.add(group);
+  decoyVis.set(id, {group, parts});
+  spawnSmoke(x, 1, z, {n:5, size:.8, color:0xf9a8d4, add:true, rise:.5, life:.5, grow:.9, opacity:.5, spread:.4});
+}
+function removeDecoyVis(id){
+  const v = decoyVis.get(id); if(!v) return;
+  const p = v.group.position;
+  spawnSmoke(p.x, 1, p.z, {n:7, size:.9, color:0xf9a8d4, add:true, rise:.8, life:.5, grow:1.1, opacity:.6, spread:.4});
+  sparkBurst(new THREE.Vector3(p.x, 1.2, p.z), 0xf472b6, 10, 4);
+  scene.remove(v.group);
+  decoyVis.delete(id);
+}
+function hostDecoyHit(id, dmg){
+  const dc = decoys.get(id); if(!dc) return;
+  dc.hp -= dmg||20;
+  if (dc.hp <= 0){
+    decoys.delete(id);
+    const ev = {t:'ev', k:'decoygone', id};
+    bcast(ev); onGameEvent(ev);
   }
 }
 
@@ -2359,7 +2725,7 @@ function spawnEarthWall(id, x, z, ry){
     colliders.push(c); cols.push(c);
   }
   scene.add(group);
-  wallsLive.set(id, {group, meshes, colliders:cols, hp:260, dieAt:now()+20});
+  wallsLive.set(id, {group, meshes, colliders:cols, hp:320, dieAt:now()+20});
   sfx('boom', .35); shakeCam(0.16);
 }
 function spawnMiniWall(id, x, z, ry){ // 土彈擊地隆起的單塊岩掩體
@@ -2510,7 +2876,7 @@ function sparkBurst(p, color, n=8, spd=3){
 /* ---------- 元素投射物：射出元素本身（火球/種子/水彈/飛刃/岩石） ---------- */
 const bolts = [];
 const MAX_BOLTS = 60;
-const BOLT_SPEED = { metal:200, wood:140, water:150, fire:115, earth:135, ice:160, thunder:230, wind:180, dark:150, light:330 };
+const BOLT_SPEED = { metal:200, wood:140, water:150, fire:115, earth:135, ice:160, thunder:230, wind:180, dark:150, light:330, time:180, sound:210, phantom:150 };
 function spawnBolt(from, to, el){
   if (bolts.length >= MAX_BOLTS){ const old = bolts.shift(); scene.remove(old.group); }
   const group = new THREE.Group();
@@ -2579,6 +2945,22 @@ function spawnBolt(from, to, el){
     group.add(m);
     addGlow(0xfff8d8, .45);
     addGlow(0xffffff, .2);
+  } else if (el==='time'){   // 時之彈：青藍時輪自旋
+    const m = new THREE.Mesh(new THREE.TorusGeometry(.1,.02,6,16),
+      new THREE.MeshStandardMaterial({color:0xcffcff, emissive:0x67e8f9, emissiveIntensity:1.1,
+        transparent:true, opacity:.85, roughness:.2}));
+    group.add(m); spinObj = m; spin.set(0,0,20);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(.015,.16,.015),
+      new THREE.MeshStandardMaterial({color:0xffffff, emissive:0x67e8f9, emissiveIntensity:1.2}));
+    m.add(bar);   // 時針隨環轉動
+    addGlow(0x67e8f9, .34);
+  } else if (el==='sound'){  // 聲波彈：橙色音環脈衝
+    const m = new THREE.Mesh(new THREE.TorusGeometry(.09,.025,6,14),
+      new THREE.MeshStandardMaterial({color:0xffe4c8, emissive:0xf97316, emissiveIntensity:1,
+        transparent:true, opacity:.8, roughness:.3}));
+    group.add(m); spinObj = m; spin.set(0,0,10);
+    group.userData.pulse = m;
+    addGlow(0xfb923c, .36);
   } else {                    // 岩彈：翻滾的碎岩
     const m = new THREE.Mesh(new THREE.DodecahedronGeometry(.115),
       new THREE.MeshStandardMaterial({map:TEX.rock, roughness:.95}));
@@ -2619,15 +3001,29 @@ function boltTrail(b){
     if (Math.random()<.25) spawnSmoke(p.x, p.y, p.z, {n:1, size:.14, color:0x8b5cf6, add:true, rise:0, life:.2, grow:-.3, opacity:.8, spread:.04});
   } else if (b.el==='light'){
     spawnSmoke(p.x, p.y, p.z, {n:1, size:.22, color:0xfff8d8, add:true, rise:0, life:.13, grow:-.6, opacity:.95, spread:.02});
+  } else if (b.el==='time'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.2, color:0x9ff3ff, add:true, rise:0, life:.3, grow:-.3, opacity:.7, spread:.04});
+  } else if (b.el==='sound'){
+    spawnSmoke(p.x, p.y, p.z, {n:1, size:.24, color:0xffc9a0, add:true, rise:0, life:.2, grow:.6, opacity:.5, spread:.04});
   } else {
     spawnSmoke(p.x, p.y, p.z, {n:1, size:.24, color:0xb59a6a, rise:.1, life:.4, grow:.5, opacity:.35, spread:.04});
   }
 }
+let chronoStopUntil = 0;   // 時大招：世界時停（子彈凝滯）
 function boltsTick(dt){
   const t = now();
+  const stopK = t < chronoStopUntil ? 0.05 : 1;   // 時停：全場子彈近乎靜止
   for (let i=bolts.length-1;i>=0;i--){
     const b = bolts[i];
-    const step = Math.min(b.speed*dt, b.left);
+    let slowK = stopK;
+    if (slowK === 1){   // 時緩域：域內子彈慢動作
+      for (const v of zoneVis.values()){
+        if (v.kind!=='chrono') continue;
+        const p = b.group.position;
+        if ((p.x-v.x)**2 + (p.z-v.z)**2 < v.r*v.r){ slowK = 0.35; break; }
+      }
+    }
+    const step = Math.min(b.speed*dt*slowK, b.left);
     b.group.position.addScaledVector(b.dir, step);
     b.left -= step;
     if (b.spinObj){
@@ -2640,6 +3036,8 @@ function boltsTick(dt){
       fl[0].scale.setScalar(.5 + Math.sin(t*30+i)*.09);
       fl[1].scale.setScalar(.36 + Math.cos(t*26+i)*.07);
     }
+    const pu = b.group.userData.pulse;
+    if (pu){ const pk = 1 + Math.sin(t*26+i)*.35; pu.scale.set(pk, pk, 1); }   // 聲波彈脈動
     b.trailT -= dt;
     if (b.trailT <= 0){ b.trailT = 0.016; boltTrail(b); }
     if (b.left <= 0.01){ scene.remove(b.group); bolts.splice(i,1); }
@@ -2755,6 +3153,9 @@ function hostNadeBoom(srcIdx, x, y, z){
     else if (el==='earth'){ o.fx.stun = Math.max(o.fx.stun, .8); }
     else if (el==='wood'){ o.fx.root = Math.max(o.fx.root, 1.8); }
     else if (el==='dark'){ o.fx.blind = Math.max(o.fx.blind, 2.2); }
+    else if (el==='time'){ o.fx.tslow = Math.max(o.fx.tslow, 2.5); o.fx.slow = Math.max(o.fx.slow, 2); }
+    else if (el==='sound'){ o.fx.deaf = Math.max(o.fx.deaf, 2.5); o.fx.stun = Math.max(o.fx.stun, .4); }
+    else if (el==='phantom'){ o.fx.slow = Math.max(o.fx.slow, 2); o.fx.blind = Math.max(o.fx.blind, 1); }
     else if (el==='wind'){
       const a = Math.atan2(p.z-z, p.x-x);
       if (o.ctrl==='bot'){
@@ -2778,6 +3179,9 @@ function hostNadeBoom(srcIdx, x, y, z){
   else if (el==='wind') hostAddZone('gale', zx, zz, 2.8, 5, srcIdx);
   else if (el==='dark') hostAddZone('gloom', zx, zz, 2.8, 5.5, srcIdx);
   else if (el==='light') hostAddZone('sanct', zx, zz, 2.6, 5.5, srcIdx);
+  else if (el==='time') hostAddZone('chrono', zx, zz, 2.6, 5, srcIdx);
+  else if (el==='sound') hostAddZone('echo', zx, zz, 2.8, 5, srcIdx);
+  else if (el==='phantom') hostAddZone('gloom', zx, zz, 2.6, 4, srcIdx);
   else if (el==='earth'){   // 土雷：轟出岩掩體（避開站位以免卡人）
     let blocked = false;
     for (const o of slots){
@@ -2954,6 +3358,22 @@ function elemHitFX(p, el){
     case 'light':   // 聖光星芒
       spriteBurst(p, TEX.flash, 0xfff6cf, .35, 1.7, .25);
       sparkBurst(p, 0xfff8d8, 10, 5);
+      break;
+    case 'time':    // 時紋錶盤：青藍雙環反向擴散
+      spriteBurst(p, TEX.ring, 0x67e8f9, .15, 1.2, .3);
+      spriteBurst(p, TEX.ring, 0xcffcff, 1.2, .1, .3, .7);
+      sparkBurst(p, 0x67e8f9, 8, 4);
+      break;
+    case 'sound':   // 聲爆震盪：橙色多重音環
+      spriteBurst(p, TEX.ring, 0xfb923c, .12, 1.6, .28);
+      spriteBurst(p, TEX.ring, 0xffd9b0, .3, 2.2, .35, .6);
+      sparkBurst(p, 0xffc9a0, 6, 4);
+      break;
+    case 'phantom': // 幻刃殘光：粉紅斬痕交錯
+      spriteBurst(p, TEX.flash, 0xf9a8d4, .35, 1.3, .22);
+      arcLine(p.clone().add(new THREE.Vector3(rand(-.6,.6), .5, rand(-.6,.6))),
+              p.clone().add(new THREE.Vector3(rand(-.6,.6), -.4, rand(-.6,.6))), .2, 0xf9a8d4);
+      sparkBurst(p, 0xf472b6, 8, 4);
       break;
   }
 }
@@ -3311,6 +3731,40 @@ function spawnZoneVis(id, kind, x, z, r, dur){
     group.add(ring);
     const L = new THREE.PointLight(0xffe9a0, 10, r*4, 1.8);
     L.position.set(x, 1.5, z); group.add(L);
+  } else if (kind==='chrono'){   // 時緩域：青藍雙環時鐘盤
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r*.85, r, 40),
+      new THREE.MeshBasicMaterial({color:0x67e8f9, transparent:true, opacity:.55, side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending, depthWrite:false}));
+    ring.rotation.x = -Math.PI/2; ring.position.set(x, .07, z);
+    group.add(ring);
+    const ring2 = new THREE.Mesh(new THREE.RingGeometry(r*.4, r*.5, 32),
+      new THREE.MeshBasicMaterial({color:0xcffcff, transparent:true, opacity:.4, side:THREE.DoubleSide,
+        blending:THREE.AdditiveBlending, depthWrite:false}));
+    ring2.rotation.x = -Math.PI/2; ring2.position.set(x, .35, z);
+    group.add(ring2);
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(.05, .02, r*.8),
+      new THREE.MeshBasicMaterial({color:0x9ff3ff, transparent:true, opacity:.6, blending:THREE.AdditiveBlending, depthWrite:false}));
+    hand.position.set(x, .2, z);
+    group.add(hand);
+    group.userData.chrono = {rings:[ring, ring2], hand};
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 30),
+      new THREE.MeshBasicMaterial({color:0x67e8f9, transparent:true, opacity:.1, blending:THREE.AdditiveBlending, depthWrite:false}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .04, z);
+    group.add(disc);
+  } else if (kind==='echo'){     // 聲場：橙色同心音環脈衝
+    const rings = [];
+    for (let i=0;i<3;i++){
+      const rr = new THREE.Mesh(new THREE.RingGeometry(r*(.3+i*.25), r*(.36+i*.25), 32),
+        new THREE.MeshBasicMaterial({color:i%2?0xffd9b0:0xfb923c, transparent:true, opacity:.5, side:THREE.DoubleSide,
+          blending:THREE.AdditiveBlending, depthWrite:false}));
+      rr.rotation.x = -Math.PI/2; rr.position.set(x, .07+i*.02, z);
+      group.add(rr); rings.push(rr);
+    }
+    group.userData.echoRings = rings;
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
+      new THREE.MeshBasicMaterial({color:0xf97316, transparent:true, opacity:.12, blending:THREE.AdditiveBlending, depthWrite:false}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .04, z);
+    group.add(disc);
   } else if (kind==='shrapnel'){
     const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
       new THREE.MeshBasicMaterial({color:0x8a7a3a, transparent:true, opacity:.25, depthWrite:false}));
@@ -3365,6 +3819,19 @@ function zoneVisTick(){
     if (v.kind==='sanct' && Math.random()<.2)    // 金色光塵飄升
       spawnSmoke(v.x+rand(-v.r*.7,v.r*.7), .2, v.z+rand(-v.r*.7,v.r*.7),
         {n:1, size:.14, color:0xffe9a0, add:true, rise:1.6, life:1.1, grow:-.05, opacity:.95, spread:.05});
+    if (v.kind==='chrono'){   // 時緩域：時鐘盤緩慢逆轉＋時塵
+      const ch = v.group.userData.chrono;
+      if (ch){ ch.rings[0].rotation.z += .015; ch.rings[1].rotation.z -= .04; ch.hand.rotation.y -= .02; }
+      if (Math.random()<.12)
+        spawnSmoke(v.x+rand(-v.r*.6,v.r*.6), .3, v.z+rand(-v.r*.6,v.r*.6),
+          {n:1, size:.13, color:0x9ff3ff, add:true, rise:.5, life:1.4, grow:-.04, opacity:.8, spread:.05});
+    }
+    if (v.kind==='echo'){     // 聲場：音環呼吸脈衝
+      const er = v.group.userData.echoRings;
+      if (er) er.forEach((rr,i)=>{ const pk = 1 + Math.sin(t*6 + i*2.1)*.18; rr.scale.set(pk, pk, 1); });
+      if (Math.random()<.08)
+        sparkBurst(new THREE.Vector3(v.x+rand(-v.r,v.r), .4, v.z+rand(-v.r,v.r)), 0xfb923c, 2, 1.5);
+    }
   }
 }
 
@@ -3476,6 +3943,20 @@ function avatarStatusFX(s, a){
     }
     a.rootFX.visible = true;
   } else if (a.rootFX) a.rootFX.visible = false;
+  // 迴聲標記：頭頂橙色聲紋（穿牆可見）
+  if (s.fx.reveal > 0){
+    if (!a.revealFX){
+      a.revealFX = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.ring, color:0xfb923c,
+        transparent:true, depthWrite:false, depthTest:false, blending:THREE.AdditiveBlending}));
+      a.revealFX.position.y = 2.35;
+      a.revealFX.renderOrder = 999;
+      a.group.add(a.revealFX);
+    }
+    a.revealFX.visible = true;
+    const rk = .3 + Math.abs(Math.sin(t*4))*.2;
+    a.revealFX.scale.set(rk, rk, 1);
+    a.revealFX.material.opacity = .55 + Math.sin(t*6)*.25;
+  } else if (a.revealFX) a.revealFX.visible = false;
   // 暈眩：頭頂金星環繞
   if (s.fx.stun > 0){
     if (!a.stunFX){
@@ -3516,9 +3997,16 @@ function botThink(s, dt){
   let target=null, td=1e9;
   for (const o of slots){
     if (o.ctrl==='empty' || !o.alive || o.team===s.team) continue;
-    if (o.fx.stealth>0) continue;   // 暗影遁形：AI 找不到匿蹤者
+    if (o.fx.stealth>0 && o.fx.reveal<=0) continue;   // 暗影遁形：AI 找不到匿蹤者（被迴聲標記除外）
     const d = o.pos.distanceTo(s.pos);
     if (d<td){ td=d; target=o; }
+  }
+  // 幻系分身：AI 會上當，把敵方分身當成目標
+  for (const [did, dc] of decoys){
+    if (dc.team===s.team) continue;
+    const d = Math.hypot(dc.x-s.pos.x, dc.z-s.pos.z);
+    if (d<td){ td=d; target={pos:new THREE.Vector3(dc.x, 0, dc.z), isDecoy:did, team:dc.team,
+                             moving:false, fx:{stealth:0, reveal:0}}; }
   }
   let seeTarget = false;
   if (fx.blind>0 && s.fx.gat<=0) target = null;   // 蝕明：AI 暫時失明
@@ -3549,20 +4037,29 @@ function botThink(s, dt){
     s.rx = clamp(Math.atan2((target.pos.y+1.25)-(s.pos.y+1.55), td), -.5,.5);
     // 橫移 + 距離控制
     b.strafe += dt;
-    const g = GUNS[s.gun];
-    const ideal = g.pellets>1 ? 9 : g.zoom ? 30 : 16;
+    const isPh = CHARS[s.char].el==='phantom';   // 幻系 AI：貼身近戰
+    const g = isPh ? GUNS[6] : GUNS[s.gun];
+    const ideal = isPh ? 1.5 : g.pellets>1 ? 9 : g.zoom ? 30 : 16;
     const fwd = new THREE.Vector3(-Math.sin(s.ry),0,-Math.cos(s.ry));
     const rgt = new THREE.Vector3(-fwd.z,0,fwd.x);
     mv.addScaledVector(fwd, clamp((td-ideal)*0.25, -1, 1));
     mv.addScaledVector(rgt, Math.sin(b.strafe*1.7));
-    // 開槍
+    // 開槍 / 揮刃
     b.fireCd -= dt;
     if (b.reload > 0){ b.reload -= dt; if(b.reload<=0) b.ammo = g.mag; }
     else if (Math.abs(dy) < 0.15 && b.fireCd<=0 && b.aimDelay<=0){
       const gat = s.fx.gat > 0;
-      b.fireCd = gat ? 0.09 : 60/g.rpm * (g.auto? rand(1.5,2.3) : rand(1.7,2.6));
-      if (!gat){ b.ammo--; if (b.ammo<=0) b.reload = g.reload; }
-      botShoot(s, target, td, gat ? GUNS[5] : g, gat);
+      if (isPh && !gat){
+        if (td < 3.4){
+          b.fireCd = (60/GUNS[6].rpm) * rand(1.1,1.6) * (fx.tslow>0?1.6:1);
+          botShoot(s, target, td, GUNS[6], false);
+        }
+      } else {
+        b.fireCd = gat ? 0.09 : 60/g.rpm * (g.auto? rand(1.5,2.3) : rand(1.7,2.6));
+        if (fx.tslow>0) b.fireCd *= 1.6;   // 時滯：AI 射速也被拖慢
+        if (!gat){ b.ammo--; if (b.ammo<=0) b.reload = g.reload; }
+        botShoot(s, target, td, gat ? GUNS[5] : g, gat);
+      }
     }
     // 手雷：中距離看得到目標時偶爾投擲
     if (b.nadeCd<=0 && td>7 && td<26 && Math.random()<dt*0.5){
@@ -3619,6 +4116,17 @@ function botThink(s, dt){
   } else s.moving = false;
 }
 function botShoot(s, target, dist, g, gat=false){
+  // 幻系 AI：近戰揮刃（無彈道，命中率高）
+  if (g === GUNS[6]){
+    const op = target.pos;
+    const fe = {t:'ev', k:'fstep', x:+op.x.toFixed(1), y:+(op.y+1.2).toFixed(1), z:+op.z.toFixed(1)};
+    bcast(fe); onGameEvent(fe);
+    if (Math.random() < 0.55){
+      if (target.isDecoy !== undefined) hostDecoyHit(target.isDecoy, g.dmg);
+      else hostApplyHit(s.idx, target.idx, Math.random()<0.08?'head':'body', 6, dist);
+    }
+    return;
+  }
   // 由 AI 準度決定是否命中
   const o = [s.pos.x, s.pos.y+1.5, s.pos.z];
   const err = 0.5 + dist*0.05;
@@ -3631,7 +4139,8 @@ function botShoot(s, target, dist, g, gat=false){
   for (let p=0;p<g.pellets;p++){
     if (Math.random() < hitP){
       const part = Math.random()<0.06 ? 'head':'body';
-      hostApplyHit(s.idx, target.idx, part, gat?5:s.gun, dist);
+      if (target.isDecoy !== undefined){ hostDecoyHit(target.isDecoy, g.dmg); }
+      else hostApplyHit(s.idx, target.idx, part, gat?5:s.gun, dist);
     }
   }
 }
@@ -3643,11 +4152,11 @@ function hostTick(dt){
     if (s.ctrl==='empty') continue;
     // 狀態效果
     const fx = s.fx;
-    for (const k of ['slow','root','stun','shield','regen','haste','gat','blind','stealth']) if (fx[k]>0) fx[k]-=dt;
+    for (const k of ['slow','root','stun','shield','regen','haste','gat','blind','stealth','tslow','deaf','silence','reveal']) if (fx[k]>0) fx[k]-=dt;
     if (fx.frzT>0){ fx.frzT-=dt; if (fx.frzT<=0) fx.frz = 0; }   // 凍層衰減
     if (fx.burn>0){
       fx.burn-=dt;
-      if (s.alive){ hostDamage(s, 6*dt, slots[fx.burnSrc], false, '灼燒'); }
+      if (s.alive){ hostDamage(s, 8*dt, slots[fx.burnSrc], false, '灼燒'); }   // 火：灼燒強化
     }
     if (fx.regen>0 && s.alive) hostHeal(s, 12*dt);
     if (s.skillCd>0) s.skillCd-=dt;
@@ -3673,8 +4182,8 @@ function hostTick(dt){
       const src = slots[zn.src];
       const p = o.idx===myIdx ? me.pos : o.pos;
       if ((p.x-zn.x)**2 + (p.z-zn.z)**2 > zn.r*zn.r) continue;
-      if (zn.kind==='sanct'){   // 聖域：治療施放者的隊伍並淨化蝕明
-        if (src && o.team===src.team){ hostHeal(o, 10*dt); o.fx.blind = 0; }
+      if (zn.kind==='sanct'){   // 聖域：治療施放者的隊伍並淨化蝕明（強化）
+        if (src && o.team===src.team){ hostHeal(o, 13*dt); o.fx.blind = 0; }
         continue;
       }
       if (src && o.team === src.team) continue;   // 其餘區域只影響施放者的敵隊
@@ -3697,6 +4206,16 @@ function hostTick(dt){
         }
       }
       else if (zn.kind==='gloom'){ o.fx.blind = Math.max(o.fx.blind, .5); }
+      else if (zn.kind==='chrono'){ o.fx.tslow = Math.max(o.fx.tslow, .6); o.fx.slow = Math.max(o.fx.slow, .4); }
+      else if (zn.kind==='echo'){ o.fx.deaf = Math.max(o.fx.deaf, .8); hostDamage(o, 4*dt, slots[zn.src], false, '聲場'); }
+    }
+  }
+  // 幻系分身到期
+  for (const [did, dc] of decoys){
+    if (t > dc.until){
+      decoys.delete(did);
+      const ev = {t:'ev', k:'decoygone', id:did};
+      bcast(ev); onGameEvent(ev);
     }
   }
   // 蒸汽視線遮蔽到期
@@ -3712,7 +4231,7 @@ function snapshotTick(){
     +s.pos.x.toFixed(2), +s.pos.y.toFixed(2), +s.pos.z.toFixed(2),
     +s.ry.toFixed(3), +s.rx.toFixed(3),
     Math.round(s.hp), s.alive?1:0, s.gun, s.moving?1:0,
-    (s.fx.burn>0?1:0)|(s.fx.slow>0?2:0)|(s.fx.root>0?4:0)|(s.fx.stun>0?8:0)|(s.fx.shield>0?16:0)|(s.fx.haste>0?32:0)|(s.fx.gat>0?64:0)|(s.fx.blind>0?128:0)|(s.fx.stealth>0?256:0),
+    (s.fx.burn>0?1:0)|(s.fx.slow>0?2:0)|(s.fx.root>0?4:0)|(s.fx.stun>0?8:0)|(s.fx.shield>0?16:0)|(s.fx.haste>0?32:0)|(s.fx.gat>0?64:0)|(s.fx.blind>0?128:0)|(s.fx.stealth>0?256:0)|(s.fx.tslow>0?512:0)|(s.fx.deaf>0?1024:0)|(s.fx.silence>0?2048:0)|(s.fx.reveal>0?4096:0),
     Math.round(s.ult), s.pose||0,
   ]);
   bcast({t:'st', time:Math.round(matchT), r:scores.red, b:scores.blue, pl});
@@ -3728,6 +4247,7 @@ function applySnapshot(d){
     s.fx.burn = fb&1?1:0; s.fx.slow = fb&2?1:0; s.fx.root = fb&4?1:0;
     s.fx.stun = fb&8?1:0; s.fx.shield = fb&16?1:0; s.fx.haste = fb&32?1:0; s.fx.gat = fb&64?1:0;
     s.fx.blind = fb&128?1:0; s.fx.stealth = fb&256?1:0;
+    s.fx.tslow = fb&512?1:0; s.fx.deaf = fb&1024?1:0; s.fx.silence = fb&2048?1:0; s.fx.reveal = fb&4096?1:0;
     if (i === myIdx){
       if (s.alive && p[5] < s._lastHp) hurtFeedback();
       s._lastHp = p[5];
@@ -3852,6 +4372,11 @@ function updateAmmoUI(){
   if (slots[myIdx] && slots[myIdx].fx.gat > 0){
     $('ammo').innerHTML = '∞';
     $('gunname').textContent = GUNS[5].name+' · '+GUNS[5].en;
+    return;
+  }
+  if (slots[myIdx] && CHARS[slots[myIdx].char].el==='phantom'){
+    $('ammo').innerHTML = '∞';
+    $('gunname').textContent = GUNS[6].name+' · '+GUNS[6].en;
     return;
   }
   const g = GUNS[me.gun];
@@ -3988,6 +4513,7 @@ addEventListener('keydown', e=>{
   }
 });
 function switchGun(i){
+  if (started && slots[myIdx] && CHARS[slots[myIdx].char].el==='phantom') return;   // 幻系不可用槍
   if (i===me.gun) return;
   me.gun=i; me.ammo=GUNS[i].mag; me.reloading=0; me.zoomed=false;
   vmDraw = 1;   // 舉槍動畫
@@ -3999,11 +4525,17 @@ function updateTouchGunUI(){
   const zb = $('btnZoomT');
   if (zb) zb.style.opacity = GUNS[me.gun].zoom ? 1 : .45;   // 鏡鈕常駐，非狙擊時變暗
   const gb = $('btnGunT');
-  if (gb) gb.textContent = ['手槍','衝鋒','突擊','霰彈','狙擊'][me.gun] || '換槍';
+  const isPh = started && slots[myIdx] && CHARS[slots[myIdx].char].el==='phantom';
+  if (gb){
+    gb.textContent = isPh ? '雙刃' : (['手槍','衝鋒','突擊','霰彈','狙擊'][me.gun] || '換槍');
+    gb.style.opacity = isPh ? .45 : 1;
+  }
 }
 function doSkill(){
   if (isHost) localSkill();
-  else { const s=slots[myIdx]; if (localSkillCd<=0 && !me.dead){ localSkillCd = CHARS[s.char].skillCd; localSkill(); } }
+  else { const s=slots[myIdx];
+    if (s.fx.silence>0){ centerMsg('技能被聲爆封鎖！'); sfx('click', .9); return; }
+    if (localSkillCd<=0 && !me.dead){ localSkillCd = CHARS[s.char].skillCd; localSkill(); } }
 }
 addEventListener('keyup', e=>{ keys[e.code]=false; if(e.code==='Tab') $('board').classList.add('hidden'); });
 addEventListener('mousemove', e=>{
@@ -4216,7 +4748,7 @@ function frame(){
     if (s.ctrl==='empty' || s.idx===myIdx || !s.avatar) continue;
     const a = s.avatar;
     // 匿蹤者對敵隊隱形（隊友仍可見）；死亡後倒地動畫期間仍可見
-    const hiddenFromMe = s.fx.stealth>0 && slots[myIdx] && s.team!==slots[myIdx].team;
+    const hiddenFromMe = s.fx.stealth>0 && s.fx.reveal<=0 && slots[myIdx] && s.team!==slots[myIdx].team;   // 迴聲標記破匿蹤
     a.group.visible = (s.alive || (s._dieT||0) > now()) && !hiddenFromMe;
     if (!s.alive) continue;
     if (!isHost && s._tp){
