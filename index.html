@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>五行槍神錄 3D · Wuxing Strike</title>
+<style>
+  :root{
+    --metal:#e8c84a; --wood:#4ade80; --water:#38bdf8; --fire:#ff6b5e; --earth:#c99a4e;
+    --red:#ff5a4e; --blue:#4ea1ff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-user-select:none}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0a0c10;color:#e9edf3;
+    font-family:"Noto Sans TC","Microsoft JhengHei","PingFang TC",sans-serif}
+  #c3d{position:fixed;inset:0;display:block}
+  /* 內容超出視窗時仍可完整捲動（flex 置中溢出會裁掉頂端，改用 auto margin 置中） */
+  .overlay{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+  .overlay > :first-child{margin-top:auto}
+  .overlay > :last-child{margin-bottom:auto}
+  .hidden{display:none!important}
+  button{font-family:inherit;cursor:pointer}
+  input{font-family:inherit}
+
+  /* ===== 大廳 ===== */
+  #lobby{background:
+    linear-gradient(rgba(6,8,12,.78),rgba(6,8,12,.92)),
+    radial-gradient(ellipse at 50% 20%,#1a2434 0%,#07090d 70%);overflow-y:auto;padding:30px 16px}
+  .gtitle{font-size:clamp(34px,5.5vw,62px);font-weight:900;letter-spacing:.16em;
+    background:linear-gradient(90deg,var(--metal),var(--wood),var(--water),var(--fire),var(--earth));
+    -webkit-background-clip:text;background-clip:text;color:transparent;text-align:center;
+    filter:drop-shadow(0 2px 18px rgba(140,190,255,.3))}
+  .gsub{color:#8296b3;letter-spacing:.45em;font-size:13px;margin:6px 0 30px;text-align:center}
+  .panel{background:rgba(14,19,28,.85);border:1px solid rgba(255,255,255,.1);border-radius:14px;
+    padding:26px 30px;width:min(480px,94vw);backdrop-filter:blur(8px)}
+  .panel h3{font-size:15px;letter-spacing:.2em;color:#9fb2d0;margin-bottom:12px}
+  .row{display:flex;gap:10px;margin-bottom:14px}
+  .ipt{flex:1;background:#0b0f16;border:1px solid #2c3a52;border-radius:9px;color:#fff;
+    padding:12px 14px;font-size:15px;letter-spacing:.06em;outline:none}
+  .ipt:focus{border-color:#4ea1ff}
+  .btn{border:none;border-radius:9px;padding:12px 22px;font-size:15px;font-weight:700;letter-spacing:.12em;color:#fff;transition:filter .15s}
+  .btn:hover{filter:brightness(1.18)}
+  .btn.pri{background:linear-gradient(90deg,#2f7bff,#7a4dff)}
+  .btn.grn{background:linear-gradient(90deg,#159957,#1f8f6e)}
+  .btn.gld{background:linear-gradient(90deg,#a06a1f,#c98f2e)}
+  .btn.gry{background:#273248}
+  .or{color:#5b6c86;text-align:center;margin:10px 0;font-size:12px;letter-spacing:.3em}
+  .note{color:#6d80a0;font-size:12px;line-height:1.8;margin-top:16px}
+  kbd{background:#1b2436;border:1px solid #33415c;border-radius:5px;padding:1px 7px;font-size:12px;color:#cfe0ff}
+
+  /* ===== 角色列 ===== */
+  #charRow,#charRowRoom{display:flex;gap:8px;margin:4px 0 16px;flex-wrap:wrap;justify-content:center;max-width:min(560px,94vw)}
+  #charRowRoom{margin:2px 0 10px}
+  #charRowRoom .cbtn{width:64px;padding:7px 3px}
+  #charRowRoom .cbtn .g{font-size:21px}
+  #charRowRoom .cbtn .n{font-size:10px}
+  .cbtn{width:82px;padding:9px 4px;border-radius:10px;border:1.5px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.04);text-align:center;transition:all .15s;color:#cfd9e8}
+  .cbtn .g{font-size:26px;font-weight:900;text-shadow:0 0 12px currentColor;font-family:serif}
+  .cbtn .n{font-size:11px;margin-top:3px;letter-spacing:.05em}
+  .cbtn.sel{background:rgba(255,255,255,.12);transform:translateY(-3px);border-color:currentColor;box-shadow:0 6px 18px -4px currentColor}
+
+  /* ===== 房間 ===== */
+  #room{background:linear-gradient(rgba(6,8,12,.82),rgba(6,8,12,.94)),radial-gradient(ellipse at 50% 20%,#1a2434 0%,#07090d 70%);overflow-y:auto;padding:24px 16px}
+  @media (max-height:760px){   /* 手機直向/矮視窗：房間排版緊縮，屬性列必定看得到 */
+    #room{padding:14px 10px}
+    #roomCode{font-size:26px}
+    .teams{margin:10px 0;gap:10px}
+    .teamcol{padding:10px}
+    .slot{padding:7px 10px;margin-bottom:6px;font-size:13px;min-height:38px}
+  }
+  #roomCode{font-size:38px;font-weight:900;letter-spacing:.35em;color:#ffd54a;cursor:pointer;
+    text-shadow:0 0 22px rgba(255,213,74,.45)}
+  .teams{display:flex;gap:22px;margin:22px 0;flex-wrap:wrap;justify-content:center}
+  .teamcol{width:min(330px,92vw);border-radius:14px;padding:16px;border:1px solid rgba(255,255,255,.1)}
+  .teamcol h4{letter-spacing:.25em;margin-bottom:12px;font-size:16px}
+  .slot{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.05);border-radius:9px;
+    padding:10px 13px;margin-bottom:8px;font-size:14px;min-height:44px}
+  .slot .cg{font-weight:900;font-size:19px;font-family:serif;width:24px;text-align:center}
+  .slot .tag{margin-left:auto;font-size:11px;color:#8296b3;letter-spacing:.1em}
+  .slot.empty{color:#5b6c86;font-style:italic}
+  .slot.mine{border:1px solid rgba(255,213,74,.55);background:rgba(255,213,74,.08)}
+  .slot .en{font-size:11px;color:#8296b3}
+  .slot.cfg{cursor:pointer;font-style:normal;color:#cfd9e8;border:1px dashed rgba(255,255,255,.25);transition:background .15s}
+  .slot.cfg:hover{background:rgba(255,255,255,.12)}
+
+  /* ===== HUD ===== */
+  #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
+  #xhair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:26px;height:26px}
+  #xhair span{position:absolute;background:#dff1ff;box-shadow:0 0 4px rgba(0,0,0,.9)}
+  #hitmark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(45deg);width:26px;height:26px;opacity:0}
+  #hitmark span{position:absolute;background:#fff;box-shadow:0 0 6px #ff5a4e}
+  #hitmark span:nth-child(1){left:0;top:0;width:9px;height:2.5px}
+  #hitmark span:nth-child(2){right:0;top:0;width:9px;height:2.5px}
+  #hitmark span:nth-child(3){left:0;bottom:0;width:9px;height:2.5px}
+  #hitmark span:nth-child(4){right:0;bottom:0;width:9px;height:2.5px}
+  #vign{position:fixed;inset:0;pointer-events:none;z-index:9;opacity:0;
+    background:radial-gradient(ellipse at center,transparent 55%,rgba(200,20,20,.55) 100%)}
+  /* 暗系「蝕明」：命中後視野被黑幕吞噬，只留中央一小圈 */
+  #darkOv{position:fixed;inset:0;pointer-events:none;z-index:9;opacity:0;transition:opacity .35s;
+    background:radial-gradient(circle at center,transparent 7%,rgba(8,4,16,.85) 26%,rgba(4,2,10,.97) 48%)}
+  #topbar{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:18px;
+    background:rgba(8,11,17,.68);border:1px solid rgba(255,255,255,.1);border-radius:11px;padding:7px 20px;backdrop-filter:blur(5px)}
+  #tRed{color:var(--red);font-weight:900;font-size:22px}
+  #tBlue{color:var(--blue);font-weight:900;font-size:22px}
+  #timer{font-size:19px;font-weight:700;letter-spacing:.08em;color:#e9edf3;font-variant-numeric:tabular-nums}
+  #killfeed{position:absolute;top:70px;right:16px;display:flex;flex-direction:column;gap:5px;align-items:flex-end}
+  .kf{background:rgba(8,11,17,.72);border:1px solid rgba(255,255,255,.08);border-radius:7px;
+    padding:4px 12px;font-size:12.5px;animation:kfin .25s ease}
+  @keyframes kfin{from{transform:translateX(30px);opacity:0}}
+  #bl{position:absolute;left:18px;bottom:16px;width:290px}
+  .barwrap{background:rgba(8,11,17,.7);border:1px solid rgba(255,255,255,.12);border-radius:8px;height:19px;overflow:hidden;margin-bottom:6px;position:relative}
+  .barfill{height:100%;transition:width .12s}
+  .barlabel{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;letter-spacing:.1em;color:#fff;text-shadow:0 1px 3px #000}
+  #hpfill{background:linear-gradient(90deg,#d33a2c,#f59e0b)}
+  #ultfill{background:linear-gradient(90deg,#818cf8,#e879f9)}
+  #chips{display:flex;gap:7px;margin-top:3px}
+  .chip{background:rgba(8,11,17,.7);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:5px 11px;font-size:11.5px;color:#cfe0ff;letter-spacing:.05em;white-space:nowrap}
+  .chip.ready{border-color:#67e8f9;color:#fff;box-shadow:0 0 10px rgba(103,232,249,.3)}
+  .chip.charged{border-color:#e879f9;color:#fff;animation:pulse 1s infinite}
+  @keyframes pulse{50%{box-shadow:0 0 22px rgba(232,121,249,.85)}}
+  #br{position:absolute;right:18px;bottom:16px;text-align:right}
+  #ammo{font-size:34px;font-weight:900;color:#fff;text-shadow:0 2px 8px #000;font-variant-numeric:tabular-nums}
+  #ammo small{font-size:16px;color:#93a7c4}
+  #gunname{font-size:13px;color:#b8c6dc;letter-spacing:.15em;margin-top:2px}
+  #elemtag{font-size:12px;letter-spacing:.1em;margin-top:4px}
+  #centerMsg{position:absolute;left:50%;top:34%;transform:translateX(-50%);font-size:clamp(20px,3vw,34px);
+    font-weight:900;letter-spacing:.3em;text-shadow:0 0 20px rgba(120,180,255,.8);opacity:0;transition:opacity .3s;text-align:center;line-height:1.6}
+  /* 擊殺確認：準星下方彈出骷髏＋分數 */
+  #killCf{position:absolute;left:50%;top:56%;transform:translateX(-50%);text-align:center;opacity:0;pointer-events:none}
+  #killCf .sk{font-size:30px;filter:drop-shadow(0 0 10px rgba(255,90,60,.9))}
+  #killCf .pt{font-size:17px;font-weight:900;color:#ffd54a;text-shadow:0 0 12px rgba(255,190,60,.9);letter-spacing:.08em}
+  #killCf.pop{animation:kcpop 1s ease forwards}
+  @keyframes kcpop{0%{opacity:0;transform:translateX(-50%) scale(.5)}12%{opacity:1;transform:translateX(-50%) scale(1.25)}
+    26%{transform:translateX(-50%) scale(1)}72%{opacity:1}100%{opacity:0;transform:translateX(-50%) translateY(-16px) scale(.95)}}
+  /* 雷大招：天幕壓暗 */
+  #skyDim{position:fixed;inset:0;z-index:8;pointer-events:none;opacity:0;transition:opacity .45s;
+    background:radial-gradient(ellipse at 50% -10%,rgba(60,20,110,.5),rgba(8,4,20,.72) 75%)}
+  /* 時大招：時停青藍時痕 */
+  #chronoOv{position:fixed;inset:0;z-index:8;pointer-events:none;opacity:0;transition:opacity .4s;
+    background:radial-gradient(ellipse at center,rgba(103,232,249,.06) 30%,rgba(30,120,150,.28) 100%);
+    box-shadow:inset 0 0 120px rgba(103,232,249,.5)}
+
+  /* ===== 計分板 ===== */
+  #board{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:15;
+    background:rgba(8,11,17,.92);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:22px 28px;min-width:min(620px,94vw);backdrop-filter:blur(8px)}
+  #board h2{text-align:center;letter-spacing:.3em;font-size:18px;margin-bottom:14px;color:#cfe0ff}
+  #board table{width:100%;border-collapse:collapse;font-size:13.5px}
+  #board th{color:#7d90ad;font-weight:400;letter-spacing:.15em;padding:5px 10px;text-align:left;font-size:11.5px}
+  #board td{padding:6px 10px;border-top:1px solid rgba(255,255,255,.07)}
+  #board td:nth-child(n+3){font-variant-numeric:tabular-nums}
+
+  /* ===== 大招演出 ===== */
+  #ultcut{position:fixed;inset:0;z-index:30;pointer-events:none;display:flex;align-items:center;justify-content:center;opacity:0}
+  #ultcut.show{animation:cutin 2.2s ease forwards}
+  #ultcut .band{position:absolute;left:0;right:0;height:32vh;background:linear-gradient(90deg,transparent,rgba(0,0,0,.85) 15%,rgba(0,0,0,.85) 85%,transparent)}
+  #ulttext{position:relative;font-size:clamp(30px,6vw,74px);font-weight:900;letter-spacing:.2em;white-space:nowrap;text-shadow:0 0 28px currentColor,0 0 60px currentColor}
+  #ultsub{position:absolute;margin-top:118px;font-size:clamp(12px,1.5vw,18px);letter-spacing:.55em;color:#fff;opacity:.85}
+  @keyframes cutin{0%{opacity:0}8%{opacity:1}80%{opacity:1}100%{opacity:0}}
+  #ultcut.show #ulttext{animation:zoomin 2.2s cubic-bezier(.2,.9,.2,1) forwards}
+  @keyframes zoomin{0%{transform:scale(2.1);filter:blur(5px)}15%{transform:scale(1);filter:blur(0)}100%{transform:scale(1.08)}}
+  #flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:29}
+
+  /* ===== 死亡 / 結算 / 暫停 ===== */
+  #deathScr{position:fixed;inset:0;z-index:14;background:radial-gradient(ellipse at center,rgba(120,10,10,.25),rgba(10,4,4,.72));
+    display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+  #deathScr h2{font-size:34px;letter-spacing:.4em;font-weight:900;color:#ff8a80;margin-bottom:10px}
+  #deathScr p{color:#e9c7c2;font-size:16px;letter-spacing:.1em}
+  #endScr{background:rgba(5,7,11,.93);z-index:40}
+  #endScr h1{font-size:clamp(36px,6vw,64px);font-weight:900;letter-spacing:.3em;margin-bottom:16px}
+  #pauseHint{position:fixed;inset:0;z-index:12;background:rgba(5,7,11,.66);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;backdrop-filter:blur(3px);cursor:pointer}
+  #pauseHint h2{font-size:30px;letter-spacing:.3em;margin-bottom:14px}
+  #pauseHint p{color:#8fa3c0;line-height:2;text-align:center;font-size:14px}
+  #netstat{position:fixed;left:14px;top:12px;z-index:11;font-size:11.5px;color:#7d90ad;letter-spacing:.05em;
+    background:rgba(8,11,17,.6);padding:5px 10px;border-radius:7px;border:1px solid rgba(255,255,255,.07)}
+
+  /* ===== 手機觸控 UI ===== */
+  #c3d{touch-action:none}
+  #touchUI{position:fixed;inset:0;z-index:13;pointer-events:none;display:none}
+  #touchUI.on{display:block}
+  .tbtn{position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;
+    border-radius:50%;background:rgba(18,26,42,.55);border:1.5px solid rgba(255,255,255,.3);color:#fff;
+    font-weight:700;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:none;letter-spacing:.05em;
+    -webkit-touch-callout:none;transition:opacity .15s, transform .08s, filter .08s}
+  .tbtn::after{content:'';position:absolute;inset:-14px;border-radius:50%}  /* 隱形擴大觸控範圍 */
+  .tbtn.pressed{filter:brightness(1.7);transform:scale(.93)}
+  .tbtn.deny{border-color:rgba(255,70,60,.95)!important;box-shadow:0 0 14px rgba(255,60,50,.8)!important}
+  .tbtn:active{filter:brightness(1.5)}
+  #btnFireT{right:22px;bottom:86px;width:92px;height:92px;font-size:15px;
+    background:rgba(200,60,50,.45);border-color:rgba(255,130,110,.65)}
+  #btnSkillT{right:126px;bottom:42px;width:68px;height:68px;font-size:13px;border-color:rgba(103,232,249,.6)}
+  #btnUltT{right:134px;bottom:158px;width:68px;height:68px;font-size:13px;border-color:rgba(232,121,249,.7)}
+  #btnJumpT{right:32px;bottom:200px;width:62px;height:62px;font-size:13px}
+  #btnGunT{right:214px;bottom:96px;width:58px;height:58px;font-size:12px}
+  #btnZoomT{right:218px;bottom:172px;width:54px;height:54px;font-size:12px}
+  #btnNadeT{right:44px;bottom:272px;width:54px;height:54px;font-size:12px;border-color:rgba(255,200,90,.6)}
+  #btnCrouchT{right:112px;bottom:250px;width:54px;height:54px;font-size:13px}
+  .tbtn.on{background:rgba(103,232,249,.4);border-color:rgba(103,232,249,.9)}
+  #joyBase{position:fixed;width:112px;height:112px;border-radius:50%;border:2px solid rgba(255,255,255,.3);
+    background:rgba(255,255,255,.07);display:none;z-index:13;pointer-events:none;transform:translate(-50%,-50%)}
+  #joyKnob{position:fixed;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,.4);
+    display:none;z-index:13;pointer-events:none;transform:translate(-50%,-50%)}
+  body.touch #guns{display:none}
+  body.touch #br{bottom:auto;top:60px;right:12px}
+  body.touch #ammo{font-size:24px}
+  body.touch #killfeed{top:132px;right:12px}
+  body.touch #bl{width:190px;left:12px;bottom:200px}
+  body.touch .chip{padding:4px 8px;font-size:10.5px}
+  body.touch #topbar{gap:12px;padding:5px 14px}
+  body.touch #topbar #tRed, body.touch #topbar #tBlue{font-size:17px}
+  body.touch #topbar #timer{font-size:14px}
+
+  /* iPhone 瀏海機底部安全區：按鍵整體上移避開 home 條 */
+  @supports (bottom: env(safe-area-inset-bottom)){
+    #btnFireT{bottom:calc(86px + env(safe-area-inset-bottom))}
+    #btnSkillT{bottom:calc(44px + env(safe-area-inset-bottom))}
+    #btnUltT{bottom:calc(158px + env(safe-area-inset-bottom))}
+    #btnJumpT{bottom:calc(200px + env(safe-area-inset-bottom))}
+    #btnGunT{bottom:calc(96px + env(safe-area-inset-bottom))}
+    #btnZoomT{bottom:calc(168px + env(safe-area-inset-bottom))}
+    #btnNadeT{bottom:calc(272px + env(safe-area-inset-bottom))}
+    #btnCrouchT{bottom:calc(250px + env(safe-area-inset-bottom))}
+    body.touch #bl{bottom:calc(200px + env(safe-area-inset-bottom))}
+  }
+
+  /* ===== 狙擊鏡 ===== */
+  #scopeOv{position:fixed;inset:0;z-index:12;pointer-events:none;
+    background:radial-gradient(circle at 50% 50%, transparent 31%, rgba(0,0,0,.55) 33.5%, rgba(0,0,0,.985) 36%)}
+  #scopeOv::before{content:'';position:absolute;left:50%;top:0;bottom:0;width:1.5px;
+    background:rgba(0,0,0,.85);transform:translateX(-50%)}
+  #scopeOv::after{content:'';position:absolute;top:50%;left:0;right:0;height:1.5px;
+    background:rgba(0,0,0,.85);transform:translateY(-50%)}
+  #scopeOv .ring{position:absolute;left:50%;top:50%;width:9px;height:9px;border:1.5px solid rgba(200,30,30,.9);
+    border-radius:50%;transform:translate(-50%,-50%)}
+</style>
+</head>
+<body>
+<canvas id="c3d"></canvas>
+
+<!-- ============ 大廳 ============ -->
+<div id="lobby" class="overlay">
+  <div class="gtitle">五 行 槍 神 錄 3D</div>
+  <div class="gsub">WUXING STRIKE — 5v5 連線寫實槍戰</div>
+  <div class="panel">
+    <h3>作戰代號</h3>
+    <div class="row"><input class="ipt" id="nameIpt" maxlength="10" placeholder="輸入你的名字"></div>
+    <h3>選擇命定之行</h3>
+    <div id="charRow"></div>
+    <div class="row"><button class="btn pri" style="flex:1" id="btnCreate">建立房間（房主）</button></div>
+    <div class="or">─── 或 ───</div>
+    <div class="row">
+      <input class="ipt" id="codeIpt" maxlength="5" placeholder="輸入 5 位房號" style="text-transform:uppercase;letter-spacing:.3em">
+      <button class="btn grn" id="btnJoin">加入房間</button>
+    </div>
+    <div class="or">─── 或 ───</div>
+    <div class="row"><button class="btn gld" style="flex:1" id="btnSolo">單人開戰（電腦補滿 5v5）</button></div>
+    <div class="note">
+      連線採 P2P（PeerJS）：房主建房取得房號，隊友輸入房號即可加入；開戰時人數不足自動以 AI 士兵補齊。<br>
+      十二行屬性：金木水火土＋冰雷＋風／暗／光＋時（回溯時停）／音（迴聲定位‧技能封鎖）。子彈落點改造戰場：火海/霜地/岩牆/荊棘/碎刃/冰封/雷場/亂流/暗幕/聖域/時緩域/聲場。<br>
+      反應鏈：水冰滅火生蒸汽、火融冰、風助火勢、風雪成暴、罡風散暗幕、光暗相剋互滅、雷擊受寒者超導連鎖。<br>
+      賽制：五對五團隊死鬥 · 110 分鐘 · 擊殺越多分數越高。<br>
+      <kbd>WASD</kbd> 移動 <kbd>Shift</kbd> 疾跑 <kbd>Ctrl/C</kbd> 蹲（疾跑中＝滑壘）<kbd>Space</kbd> 跳躍 <kbd>R</kbd> 換彈 <kbd>1-5</kbd> 武器 <kbd>E</kbd> 技能 <kbd>Q</kbd> 大招 <kbd>G</kbd> 手雷 <kbd>Tab</kbd> 計分板 · 右鍵開鏡（狙擊）
+    </div>
+    <div class="note" style="margin-top:8px"><a href="classic.html" style="color:#4ea1ff">→ 玩 2D 經典版</a></div>
+  </div>
+</div>
+
+<!-- ============ 房間 ============ -->
+<div id="room" class="overlay hidden">
+  <h3 style="color:#9fb2d0;letter-spacing:.3em;margin-bottom:6px">房號（點擊複製）</h3>
+  <div id="roomCode" title="點擊複製">-----</div>
+  <div class="teams">
+    <div class="teamcol" style="border-color:rgba(255,90,78,.4)">
+      <h4 style="color:var(--red)">赤 焰 隊</h4>
+      <div id="slotsRed"></div>
+    </div>
+    <div class="teamcol" style="border-color:rgba(78,161,255,.4)">
+      <h4 style="color:var(--blue)">蒼 瀾 隊</h4>
+      <div id="slotsBlue"></div>
+    </div>
+  </div>
+  <h3 style="color:#9fb2d0;letter-spacing:.3em;margin-bottom:4px;font-size:14px">更 換 屬 性</h3>
+  <div id="charRowRoom"></div>
+  <div class="row">
+    <button class="btn gry" id="btnSwap">切換隊伍</button>
+    <button class="btn gry hidden" id="btnBots">人機補位：開</button>
+    <button class="btn pri hidden" id="btnStart">開始作戰</button>
+  </div>
+  <div class="note" id="roomHint">等待房主開始作戰…</div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="xhair"></div>
+  <div id="hitmark"><span></span><span></span><span></span><span></span></div>
+  <div id="topbar">
+    <span id="tRed">0</span>
+    <span id="timer">110:00</span>
+    <span id="tBlue">0</span>
+  </div>
+  <div id="killfeed"></div>
+  <div id="centerMsg"></div>
+  <div id="killCf"><div class="sk">☠</div><div class="pt"></div></div>
+  <div id="bl">
+    <div class="barwrap"><div class="barfill" id="hpfill" style="width:100%"></div><div class="barlabel" id="hplabel">HP 100</div></div>
+    <div class="barwrap"><div class="barfill" id="ultfill" style="width:0%"></div><div class="barlabel">絕技能量</div></div>
+    <div id="chips">
+      <div class="chip" id="chipSkill">E · 技能</div>
+      <div class="chip" id="chipUlt">Q · 大招</div>
+      <div class="chip" id="chipNade">G · 手雷 ×2</div>
+    </div>
+  </div>
+  <div id="br">
+    <div id="ammo">30<small> / ∞</small></div>
+    <div id="gunname">裂空突擊槍</div>
+    <div id="elemtag"></div>
+  </div>
+</div>
+<div id="vign"></div>
+<div id="darkOv"></div>
+<div id="skyDim"></div>
+<div id="chronoOv"></div>
+<div id="netstat" class="hidden">連線中…</div>
+
+<div id="board" class="hidden">
+  <h2>戰 況 一 覽</h2>
+  <div id="boardBody"></div>
+</div>
+
+<div id="deathScr" class="hidden">
+  <h2>陣 亡</h2>
+  <p id="respawnTxt">3 秒後重返戰場…</p>
+</div>
+
+<div id="pauseHint" class="hidden">
+  <h2>點 擊 繼 續</h2>
+  <p>點擊畫面鎖定滑鼠 · <kbd>Tab</kbd> 計分板 · <kbd>Esc</kbd> 釋放滑鼠</p>
+</div>
+
+<!-- 手機觸控 -->
+<div id="touchUI">
+  <div class="tbtn" id="btnFireT">開火</div>
+  <div class="tbtn" id="btnSkillT">技能</div>
+  <div class="tbtn" id="btnUltT">大招</div>
+  <div class="tbtn" id="btnJumpT">跳</div>
+  <div class="tbtn" id="btnGunT">換槍</div>
+  <div class="tbtn" id="btnZoomT">鏡</div>
+  <div class="tbtn" id="btnNadeT">雷×2</div>
+  <div class="tbtn" id="btnCrouchT">蹲</div>
+</div>
+<div id="joyBase"></div><div id="joyKnob"></div>
+
+<div id="scopeOv" class="hidden"><div class="ring"></div></div>
+
+<div id="flash"></div>
+<div id="ultcut"><div class="band"></div><div id="ulttext"></div><div id="ultsub"></div></div>
+
+<div id="endScr" class="overlay hidden">
+  <h1 id="endTitle">戰 鬥 結 束</h1>
+  <div id="endBoard" style="max-width:94vw"></div>
+  <button class="btn pri" style="margin-top:26px" onclick="location.reload()">返回大廳</button>
+</div>
+
+<script src="js/three.min.js"></script>
+<script src="js/peerjs.min.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
