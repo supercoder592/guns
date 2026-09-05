@@ -1,12 +1,12 @@
 "use strict";
 /* ============================================================================
    五行槍神錄 3D · Wuxing Strike
-   3v3 連線寫實風 FPS（Three.js + PeerJS P2P，房主權威模擬，AI 補位）
+   5v5 連線寫實風 FPS（Three.js + PeerJS P2P，房主權威模擬，AI 補位）
    ============================================================================ */
 
 /* ------------------------- 基本設定 ------------------------- */
 const MATCH_MINUTES = 110;          // 賽事時長
-const TEAM_SIZE = 3;                // 三對三
+const TEAM_SIZE = 5;                // 五對五
 const RESPAWN_SEC = 4;
 const TICK_STATE = 1 / 15;          // 快照頻率
 const TICK_INPUT = 1 / 20;          // 輸入上傳頻率
@@ -51,7 +51,8 @@ const GUNS = [
   { name:'萬刃殲滅砲', en:'MYRIAD GATLING', dmg:15, hs:1.6, mag:999, reload:0, rpm:1100, spread:0.035, auto:true, pellets:1, range:80, pierce:3 },
 ];
 const GUN_COUNT = 5;   // 玩家可持有的槍數（不含大招砲）
-const BOT_NAMES = ['哨兵‧甲','哨兵‧乙','哨兵‧丙','傀兵‧子','傀兵‧丑','傀兵‧寅','鐵衛‧壹','鐵衛‧貳'];
+const BOT_NAMES = ['哨兵‧甲','哨兵‧乙','哨兵‧丙','傀兵‧子','傀兵‧丑','傀兵‧寅','鐵衛‧壹','鐵衛‧貳',
+                   '影衛‧參','影衛‧肆','狼哨‧卯','狼哨‧辰'];
 
 const rand = (a,b)=> a + Math.random()*(b-a);
 const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
@@ -188,7 +189,7 @@ function sfx(kind, vol=1){
 /* ctrl: 'local' | 'net' | 'bot' | 'empty' */
 function mkSlot(i){
   return {
-    idx:i, ctrl:'empty', peer:null, name:'', char:2, botChar:-1, team: i<TEAM_SIZE?'red':'blue',
+    idx:i, ctrl:'empty', peer:null, name:'', char:2, botChar:-1, pose:0, team: i<TEAM_SIZE?'red':'blue',
     hp:100, alive:true, respawnAt:0,
     pos:new THREE.Vector3(), ry:0, rx:0, moving:false, gun:2,
     kills:0, deaths:0, score:0, streak:0, ult:0,
@@ -256,10 +257,13 @@ function fillBots(){
 }
 
 /* ------------------------- 連線（PeerJS） ------------------------- */
-// 多組 STUN 提高 NAT 穿透成功率（PeerJS 預設僅一組）
+// STUN＋免費 TURN 中繼（Open Relay）：嚴格 NAT（公司網路/行動熱點）下也能連上
 const PEER_OPTS = {debug:0, config:{iceServers:[
   {urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302',
          'stun:stun2.l.google.com:19302','stun:stun3.l.google.com:19302']},
+  {urls:'turn:openrelay.metered.ca:80',  username:'openrelayproject', credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject'},
+  {urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject'},
 ]}};
 function netFail(msg){
   $('netstat').classList.add('hidden');
@@ -330,7 +334,8 @@ function hostOnData(conn, d){
   }
   else if (d.t==='swap'){ if(!started) trySwap(conn._idx); }
   else if (d.t==='in'){ const s=slots[conn._idx]; if(s&&s.ctrl==='net'){
-      s.pos.set(d.p[0],d.p[1],d.p[2]); s.ry=d.ry; s.rx=d.rx; s.moving=!!d.mv; s.gun=clamp(d.g|0,0,4); } }
+      s.pos.set(d.p[0],d.p[1],d.p[2]); s.ry=d.ry; s.rx=d.rx; s.moving=!!d.mv; s.gun=clamp(d.g|0,0,4);
+      s.pose=clamp(d.c|0,0,2); } }
   else if (d.t==='fire'){ bcast({t:'fire', i:conn._idx, o:d.o, e:d.e}, conn); remoteTracer(d.o, d.e, conn._idx); }
   else if (d.t==='hit'){ hostApplyHit(conn._idx, d.v|0, d.part, d.g|0, d.dist||10); }
   else if (d.t==='whit'){ hostWallHit(d.id, d.dmg||20); }
@@ -1240,7 +1245,7 @@ function makeAvatar(slot){
   hbar.scale.set(1.1,.12,1); hbar.position.y=2.0; g.add(hbar);
   g.visible = false;
   scene.add(g);
-  slot.avatar = {group:g, legL, legR, head, torso, vest, gunM:gun, parts, hcv, htex, walk:0, lastHp:-1};
+  slot.avatar = {group:g, legL, legR, head, torso, vest, gunM:gun, parts, np, hbar, hcv, htex, walk:0, lastHp:-1};
   updateHpBar(slot);
 }
 function updateHpBar(slot){
@@ -1260,6 +1265,7 @@ const me = {
   yaw:0, pitch:0, onGround:true,
   gun:2, ammo:GUNS[2].mag, reloading:0, fireCd:0, recoil:0, spreadHeat:0,
   zoomed:false, bobT:0, dead:false, nades:2,
+  pose:0, eyeH:1.62, slideT:0, slideDir:new THREE.Vector3(),   // 0站 1蹲 2滑壘
 };
 const keys = {};
 let locked = false;
@@ -1267,12 +1273,12 @@ let mouseDownL = false;
 // CS 式槍模動態：視角慣性搖擺 / 換槍舉槍 / 換彈下壓
 let vmSwayX = 0, vmSwayY = 0, lookDX = 0, lookDY = 0, vmDraw = 0;
 
-function eyeHeight(){ return 1.62; }
+function eyeHeight(){ return me.eyeH; }
 const EYE = ()=> me.pos.y + eyeHeight();
 
 function spawnPoint(team){
   const base = team==='red' ? [-46,-44] : [46,44];
-  return new THREE.Vector3(base[0]+rand(-4,4), 0, base[1]+rand(-4,4));
+  return new THREE.Vector3(base[0]+rand(-6,6), 0, base[1]+rand(-6,6));   // 5v5 出生點加寬
 }
 function respawnLocal(){
   const p = spawnPoint(slots[myIdx].team);
@@ -1325,6 +1331,28 @@ function updateLocal(dt){
   if (fx.haste>0) speed *= 1.5;
   if (rooted) speed = 0;
 
+  // ---- 蹲（Ctrl/C）與滑壘（疾跑中按蹲）----
+  const wantCrouch = keys.ControlLeft || keys.KeyC || touchCrouch;
+  if (me.slideT > 0){
+    me.slideT -= dt;
+    if (!me.onGround) me.slideT = 0;   // 離地即中止滑壘
+  }
+  if (me.slideT > 0){
+    me.pose = 2;
+  } else {
+    if (wantCrouch && !me._slideLock && sprinting && slot.moving && me.onGround && !rooted){
+      me.slideT = 0.85; me.pose = 2; me._slideLock = true;
+      const mv = Math.hypot(me.vel.x, me.vel.z);
+      if (mv > 1) me.slideDir.set(me.vel.x/mv, 0, me.vel.z/mv);
+      else me.slideDir.set(-Math.sin(me.yaw), 0, -Math.cos(me.yaw));
+      sfx('steam', .45);
+    } else {
+      me.pose = wantCrouch ? 1 : 0;
+    }
+  }
+  if (!wantCrouch) me._slideLock = false;   // 放開再按才能再次滑壘
+  if (me.pose === 1) speed *= 0.5;          // 蹲行減速（但更穩）
+
   const f = new THREE.Vector3(-Math.sin(me.yaw),0,-Math.cos(me.yaw));
   const r = new THREE.Vector3(-f.z,0,f.x);   // 正確的右方向（原本鏡像，左右顛倒）
   const wish = new THREE.Vector3();
@@ -1338,21 +1366,33 @@ function updateLocal(dt){
     const analog = touchMove ? clamp((touchMag-0.12)/0.75, 0.15, 1) : 1;
     wish.normalize().multiplyScalar(speed * analog);
   }
-  // 平滑加速
-  me.vel.x += (wish.x-me.vel.x)*Math.min(1, dt*12);
-  me.vel.z += (wish.z-me.vel.z)*Math.min(1, dt*12);
+  if (me.pose === 2){
+    // 滑壘：鎖定方向、7→2.2 遞減的速度曲線
+    const spd = 2.2 + 6.8*(me.slideT/0.85);
+    me.vel.x = me.slideDir.x*spd;
+    me.vel.z = me.slideDir.z*spd;
+  } else {
+    // 平滑加速
+    me.vel.x += (wish.x-me.vel.x)*Math.min(1, dt*12);
+    me.vel.z += (wish.z-me.vel.z)*Math.min(1, dt*12);
+  }
   me.vel.y -= 15*dt;
   const jumpQueued = touchJump > 0 && now()-touchJump < 0.4;
-  if ((keys.Space || jumpQueued) && me.onGround && !rooted){ me.vel.y = 5.6; me.onGround=false; touchJump = 0; }
+  if ((keys.Space || jumpQueued) && me.onGround && !rooted){ me.vel.y = 5.6; me.onGround=false; touchJump = 0; me.slideT = 0; }
   const wasAir = !me.onGround, fallV = me.vel.y;
-  me.onGround = collideMove(me.pos, me.vel, dt);
+  me.onGround = collideMove(me.pos, me.vel, dt, 0.36, me.pose===0 ? 1.8 : 1.2);
   if (wasAir && me.onGround && fallV < -5) sfx('land', clamp(-fallV/12, .3, 1));   // 落地悶響
   me.pos.x = clamp(me.pos.x, -58, 58);
   me.pos.z = clamp(me.pos.z, -58, 58);
 
   slot.pos.copy(me.pos); slot.ry = me.yaw; slot.rx = me.pitch;
-  slot.moving = wish.lengthSq()>0.1;
+  slot.moving = wish.lengthSq()>0.1 || me.pose===2;
   slot.gun = me.gun;
+  slot.pose = me.pose;
+
+  // 視線高度平滑過渡（站 1.62 / 蹲 1.08 / 滑壘 0.78）
+  const eyeT = me.pose===2 ? 0.78 : me.pose===1 ? 1.08 : 1.62;
+  me.eyeH += (eyeT - me.eyeH) * Math.min(1, dt*11);
 
   // 攝影機
   me.bobT += dt * (slot.moving ? (keys.ShiftLeft?11:8) : 2);
@@ -1396,7 +1436,7 @@ function updateLocal(dt){
     const eff = slots[myIdx].fx.gat>0 ? GUNS[5] : GUNS[me.gun];
     if (!eff.auto) mouseDownL = false;
   }
-  const targetFov = me.zoomed && GUNS[me.gun].zoom ? 22 : (sprinting && slot.moving ? 80 : 74);
+  const targetFov = me.zoomed && GUNS[me.gun].zoom ? 22 : ((sprinting && slot.moving) || me.pose===2 ? 80 : 74);
   camera.fov += (targetFov-camera.fov)*Math.min(1,dt*14);
   camera.updateProjectionMatrix();
   // 狙擊鏡遮罩：開鏡時隱藏槍模與準星，顯示鏡內視野
@@ -1416,6 +1456,8 @@ function currentSpread(g, gat){
   let sp = g.spread * me.spreadHeat;                       // 連射熱度
   if (slots[myIdx] && slots[myIdx].moving) sp += g.spread * 1.2;   // 移動懲罰
   if (!me.onGround) sp += g.spread * 2.2;                  // 滯空懲罰
+  if (me.pose === 1) sp *= 0.55;                           // 蹲姿更穩
+  if (me.pose === 2) sp = sp*1.5 + g.spread*0.6;           // 滑壘中射擊不穩
   if (gat) sp = Math.max(sp, g.spread * 0.9);              // 殲滅砲恆定掃射散佈
   if (me.zoomed && g.zoom) sp *= 0.1;                      // 開鏡穩定
   return sp;
@@ -3671,7 +3713,7 @@ function snapshotTick(){
     +s.ry.toFixed(3), +s.rx.toFixed(3),
     Math.round(s.hp), s.alive?1:0, s.gun, s.moving?1:0,
     (s.fx.burn>0?1:0)|(s.fx.slow>0?2:0)|(s.fx.root>0?4:0)|(s.fx.stun>0?8:0)|(s.fx.shield>0?16:0)|(s.fx.haste>0?32:0)|(s.fx.gat>0?64:0)|(s.fx.blind>0?128:0)|(s.fx.stealth>0?256:0),
-    Math.round(s.ult),
+    Math.round(s.ult), s.pose||0,
   ]);
   bcast({t:'st', time:Math.round(matchT), r:scores.red, b:scores.blue, pl});
 }
@@ -3699,7 +3741,7 @@ function applySnapshot(d){
     s._tp = s._tp || new THREE.Vector3();
     s._tp.set(p[0],p[1],p[2]);
     s._try = p[3]; s._trx = p[4];
-    s.gun = p[7]; s.moving = !!p[8];
+    s.gun = p[7]; s.moving = !!p[8]; s.pose = p[11]||0;
     if (!wasAlive && s.alive) s.pos.set(p[0],p[1],p[2]);
     updateHpBar(s);
   }
@@ -3980,7 +4022,8 @@ addEventListener('mousedown', e=>{
 
 /* ---------- 手機觸控：左半搖桿移動、右半滑動瞄準、按鈕操作 ---------- */
 const touchIn = { moveId:null, aimId:null, bx:0, by:0, lx:0, ly:0, mvx:0, mvy:0 };
-let touchJump = 0;   // 觸控跳躍排隊時間戳
+let touchJump = 0;    // 觸控跳躍排隊時間戳
+let touchCrouch = false;   // 觸控蹲切換（疾跑中按下＝滑壘）
 if (IS_TOUCH){
   const cv = $('c3d');
   const joyB = $('joyBase'), joyK = $('joyKnob');
@@ -4105,6 +4148,10 @@ if (IS_TOUCH){
     if (me.dead || me.nades<=0) return false;   // 沒手雷：紅閃提示
     localThrowNade();
   });
+  bind('btnCrouchT', ()=>{
+    touchCrouch = !touchCrouch;   // 切換蹲；搖桿推到底時按下＝滑壘
+    $('btnCrouchT').classList.toggle('on', touchCrouch);
+  });
 }
 addEventListener('mouseup', e=>{ if(e.button===0) mouseDownL=false; });
 addEventListener('contextmenu', e=> e.preventDefault());
@@ -4123,6 +4170,24 @@ addEventListener('resize', ()=>{
 
 /* ------------------------- 主迴圈 ------------------------- */
 let lastFrame = 0, accState = 0, accInput = 0;
+/* 背景分頁保活：rAF 在分頁切走/螢幕鎖定時停擺——
+   主機切走會讓全場凍結、來賓被看門狗踢掉。改用 interval 低頻續跑模擬與心跳 */
+setInterval(()=>{
+  if (!started) return;
+  const t = now();
+  if (t - lastFrame < 0.35) return;   // rAF 正常運轉中
+  const dt = Math.min(t - lastFrame, 0.25);
+  lastFrame = t;
+  if (isHost){
+    hostTick(Math.min(dt, 0.1));
+    netWatchdog(dt);
+    if (netMode==='host') snapshotTick();
+  } else if (netMode==='guest' && conns[0]){
+    netWatchdog(dt);
+    send(conns[0], {t:'in', p:[+me.pos.x.toFixed(2),+me.pos.y.toFixed(2),+me.pos.z.toFixed(2)],
+      ry:+me.yaw.toFixed(3), rx:+me.pitch.toFixed(3), mv:0, g:me.gun, c:me.pose});
+  }
+}, 200);
 function frame(){
   if (!started) return;
   requestAnimationFrame(frame);
@@ -4142,7 +4207,7 @@ function frame(){
     if (accInput >= TICK_INPUT && conns[0]){
       accInput = 0;
       send(conns[0], {t:'in', p:[+me.pos.x.toFixed(2),+me.pos.y.toFixed(2),+me.pos.z.toFixed(2)],
-        ry:+me.yaw.toFixed(3), rx:+me.pitch.toFixed(3), mv:slots[myIdx].moving?1:0, g:me.gun});
+        ry:+me.yaw.toFixed(3), rx:+me.pitch.toFixed(3), mv:slots[myIdx].moving?1:0, g:me.gun, c:me.pose});
     }
   }
 
@@ -4160,6 +4225,14 @@ function frame(){
     }
     a.group.position.copy(s.pos);
     a.group.rotation.y = s.ry;
+    // 蹲/滑壘姿態：整體壓低，名牌與血條反向補償保持原位
+    const poseK = s.pose===2 ? 0.52 : s.pose===1 ? 0.72 : 1;
+    if (poseK !== a._poseK){
+      a._poseK = poseK;
+      a.group.scale.y = poseK;
+      a.np.position.y = 2.2/poseK;   a.np.scale.y = 0.68/poseK;
+      a.hbar.position.y = 2.0/poseK; a.hbar.scale.y = 0.12/poseK;
+    }
     a.walk += dt * (s.moving?9:0);
     const sw = s.moving ? Math.sin(a.walk)*0.55 : 0;
     a.legL.rotation.x = sw; a.legR.rotation.x = -sw;
