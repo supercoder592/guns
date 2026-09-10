@@ -281,28 +281,72 @@ function netFail(msg){
   alert(msg + '\n\n將以單人模式（AI 補滿）繼續也可以：點「單人開戰」。');
   $('room').classList.add('hidden'); $('lobby').classList.remove('hidden');
 }
+/* 信令伺服器（PeerJS 雲）斷線：不是致命錯誤——既有的 P2P 資料連線是直連、不受影響，
+   只影響「新玩家加入」。背景自動重連、不彈窗、不踢出房間 */
+const SIG_ERR = t => t==='network' || t==='server-error' || t==='socket-error' || t==='socket-closed';
+let sigRetryT = 0;
+function sigReconnect(){
+  if (!peer || peer.destroyed) return;
+  netWarn = '⚠ 信令重連中（不影響進行中的對戰）';
+  if (!started){
+    const ns = $('netstat'); ns.classList.remove('hidden');
+    ns.textContent = '⚠ 信令伺服器斷線，自動重連中…（已在房內的玩家不受影響）';
+  }
+  clearTimeout(sigRetryT);
+  sigRetryT = setTimeout(()=>{
+    try{ if (peer && !peer.destroyed && peer.disconnected) peer.reconnect(); }catch(_){}
+  }, 1500);
+}
+// 手機切回前景 / 螢幕解鎖：信令若在背景斷了，立刻重連
+addEventListener('visibilitychange', ()=>{
+  if (!document.hidden && peer && !peer.destroyed && peer.disconnected){ try{ peer.reconnect(); }catch(_){} }
+});
 function send(c, obj){ try{ c.send(obj); }catch(e){} }
 function bcast(obj, except){ if(netMode==='host') for(const c of conns){ if(c!==except) send(c, obj); } }
 
-function hostRoom(){
+function hostRoom(attempt = 0){
   audio();
+  hostRoom._gen = (hostRoom._gen||0) + 1;   // 世代標記：讓舊嘗試的計時器/錯誤回呼失效
+  const gen = hostRoom._gen;
   const code = roomCode5();
-  $('netstat').classList.remove('hidden'); $('netstat').textContent = '正在建立房間…';
+  $('netstat').classList.remove('hidden');
+  $('netstat').textContent = '正在建立房間…' + (attempt ? `（自動重試 ${attempt}/3）` : '');
   netMode='host'; isHost=true;
   slots = Array.from({length:TEAM_SIZE*2}, (_,i)=> mkSlot(i));
   myIdx = 0;
   const s = slots[0]; s.ctrl='local'; s.name=myName(); s.char=selChar;
   peer = new Peer('wxgs-'+code, PEER_OPTS);
   let opened = false;
-  setTimeout(()=>{ if(!opened && netMode==='host' && !started) netFail('建立房間逾時：無法連上 P2P 信令伺服器（可能被防火牆阻擋）。'); }, 12000);
+  const retry = ()=>{   // 建立階段的暫時性網路錯誤：換新 peer 退避重試
+    try{ peer.destroy(); }catch(_){}
+    setTimeout(()=>{ if (gen===hostRoom._gen && netMode==='host' && !started) hostRoom(attempt+1); }, 1200*(attempt+1));
+  };
+  setTimeout(()=>{
+    if (opened || gen!==hostRoom._gen || netMode!=='host' || started) return;
+    if (attempt < 3) retry();
+    else netFail('建立房間逾時：無法連上 P2P 信令伺服器（可能被防火牆阻擋）。');
+  }, 12000);
   peer.on('open', ()=>{
-    opened = true;
-    $('netstat').textContent = '房間已建立 · 房號 '+code;
-    showRoom(code, true);
+    if (gen !== hostRoom._gen) return;
+    netWarn = '';
+    if (!opened){   // 首次註冊成功：進房間畫面
+      opened = true;
+      $('netstat').textContent = '房間已建立 · 房號 '+code;
+      showRoom(code, true);
+    } else if (!started){   // 信令重連成功：恢復狀態列即可
+      $('netstat').textContent = '房間已建立 · 房號 '+code;
+    }
   });
+  peer.on('disconnected', ()=>{ if (opened) sigReconnect(); });
   peer.on('error', e=>{
-    if (String(e.type)==='unavailable-id'){ try{ peer.destroy(); }catch(_){} hostRoom(); return; }
-    netFail('建立房間失敗（'+e.type+'）。可能是網路或防火牆阻擋 P2P。');
+    if (gen !== hostRoom._gen) return;
+    const t = String(e.type);
+    if (t==='unavailable-id'){ try{ peer.destroy(); }catch(_){} hostRoom(attempt); return; }
+    if (SIG_ERR(t)){
+      if (opened){ sigReconnect(); return; }   // 已建房後的信令斷線：背景重連，不彈窗不踢人
+      if (attempt < 3){ retry(); return; }     // 建立階段：自動重試三次再放棄
+    }
+    netFail('建立房間失敗（'+t+'）。可能是網路或防火牆阻擋 P2P。');
   });
   peer.on('connection', conn=>{
     // data/close 需在連線建立當下就註冊：來賓的 hi 可能緊跟著 open 到達，
@@ -389,28 +433,54 @@ function roomBroadcast(){
   renderRoom();
 }
 
-function joinRoom(code){
+function joinRoom(code, attempt = 0){
   if (!/^[A-Z0-9]{5}$/.test(code)){ alert('房號需為 5 位英數字'); return; }
   audio();
-  $('netstat').classList.remove('hidden'); $('netstat').textContent = '連線至房間 '+code+'…';
+  joinRoom._gen = (joinRoom._gen||0) + 1;
+  const gen = joinRoom._gen;
+  $('netstat').classList.remove('hidden');
+  $('netstat').textContent = '連線至房間 '+code+'…' + (attempt ? `（自動重試 ${attempt}/3）` : '');
   netMode='guest'; isHost=false;
   peer = new Peer(PEER_OPTS);
-  peer.on('error', e=> netFail('連線失敗（'+e.type+'）。請確認房號正確、房主在線。'));
+  let opened = false;   // 已連上房主（DataConnection open）
+  const retry = ()=>{   // 連線階段的暫時性網路錯誤：換新 peer 退避重試
+    try{ peer.destroy(); }catch(_){}
+    setTimeout(()=>{ if (gen===joinRoom._gen && netMode==='guest' && !started) joinRoom(code, attempt+1); }, 1200*(attempt+1));
+  };
+  setTimeout(()=>{
+    if (opened || gen!==joinRoom._gen || netMode!=='guest' || started) return;
+    if (attempt < 3) retry();
+    else netFail('連線逾時。請確認房號正確、房主在線。');
+  }, 12000);
+  peer.on('disconnected', ()=>{ if (opened) sigReconnect(); });
+  peer.on('error', e=>{
+    if (gen !== joinRoom._gen) return;
+    const t = String(e.type);
+    if (t==='peer-unavailable'){ netFail('找不到房間 '+code+'。請確認房號正確、房主在線。'); return; }
+    if (SIG_ERR(t)){
+      if (opened){ sigReconnect(); return; }   // 已連上房主：對戰走直連，信令斷線無妨
+      if (attempt < 3){ retry(); return; }
+    }
+    netFail('連線失敗（'+t+'）。請確認房號正確、房主在線。');
+  });
+  let sigOpened = false;
   peer.on('open', ()=>{
+    if (gen !== joinRoom._gen) return;
+    if (sigOpened){ netWarn = ''; return; }   // 信令重連成功：既有連線仍在，不再重複連房主
+    sigOpened = true;
     const conn = peer.connect('wxgs-'+code, {reliable:true});
     conns = [conn];
-    let opened = false;
-    setTimeout(()=>{ if(!opened) netFail('連線逾時。請確認房號正確、房主在線。'); }, 12000);
     conn.on('open', ()=>{
-      opened = true;
+      opened = true; netWarn = '';
       $('netstat').textContent = '已連上房間 '+code;
       send(conn, {t:'hi', name:myName(), c:selChar});
       showRoom(code, false);
     });
     conn.on('data', d=> guestOnData(d));
     conn.on('close', ()=>{
+      if (gen !== joinRoom._gen) return;
       if (started){ endMatch('房主已離線 · 戰鬥中止'); }
-      else netFail('與房主的連線已中斷。');
+      else if (opened) netFail('與房主的連線已中斷。');
     });
   });
 }
