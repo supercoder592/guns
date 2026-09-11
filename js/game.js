@@ -14,7 +14,7 @@ const TICK_INPUT = 1 / 20;          // 輸入上傳頻率
 const EL = {
   metal:  { glyph:'金', name:'金行', color:0xe8c84a, css:'#e8c84a', fx:'穿甲必爆‧彈落碎刃區', beats:['wood','wind'] },
   wood:   { glyph:'木', name:'木行', color:0x4ade80, css:'#4ade80', fx:'命中吸血‧彈落荊棘叢', beats:['earth'] },
-  water:  { glyph:'水', name:'水行', color:0x38bdf8, css:'#38bdf8', fx:'命中緩速‧彈落霜凍地', beats:['fire'] },
+  water:  { glyph:'水', name:'水行', color:0x38bdf8, css:'#38bdf8', fx:'命中浸濕‧彈落水漫區', beats:['fire'] },
   fire:   { glyph:'火', name:'火行', color:0xff6b5e, css:'#ff6b5e', fx:'命中灼燒‧彈落生火海', beats:['metal','ice'] },
   earth:  { glyph:'土', name:'土行', color:0xc99a4e, css:'#c99a4e', fx:'命中震懾‧彈落隆岩牆', beats:['water','thunder'] },
   ice:    { glyph:'冰', name:'冰行', color:0xbfeaff, css:'#bfeaff', fx:'命中疊凍‧彈落冰封地', beats:['wood'] },
@@ -34,7 +34,7 @@ function elemMult(a, d){
 const CHARS = [
   { el:'metal', name:'白鋒‧斬鐵', skill:'金鐘罩',   skillCd:12, ultName:'金行奧義・萬刃殲滅砲',   ultSub:'GATLING OF MYRIAD BLADES' },
   { el:'wood',  name:'青藤‧生嵐', skill:'藤蔓縛地', skillCd:12, ultName:'木行奧義・世界樹之怒',   ultSub:'WRATH OF YGGDRASIL' },
-  { el:'water', name:'寒淵‧洗川', skill:'凝冰領域', skillCd:12, ultName:'水行奧義・滄海萬川歸一', ultSub:'ALL RIVERS RETURN TO SEA' },
+  { el:'water', name:'滄浪‧洗川', skill:'滄浪之域', skillCd:12, ultName:'水行奧義・滄海萬川歸一', ultSub:'ALL RIVERS RETURN TO SEA' },
   { el:'fire',  name:'炎獄‧焚天', skill:'焰行者',   skillCd:8,  ultName:'火行奧義・焚天滅地鳳凰劫', ultSub:'PHOENIX CALAMITY' },
   { el:'earth', name:'磐嶽‧不動', skill:'大地壁壘', skillCd:8,  ultName:'土行奧義・山崩地裂鎮乾坤', ultSub:'MOUNTAIN CRUSHES HEAVEN' },
   { el:'ice',   name:'霜牙‧凜冬', skill:'急凍領域', skillCd:11, ultName:'冰行奧義・千里冰封永凍劫', ultSub:'ABSOLUTE ZERO' },
@@ -2029,7 +2029,7 @@ function hostGroundHit(idx, x, y, z){
   if (Math.random() > chance) return;
   x = clamp(x, -56, 56); z = clamp(z, -56, 56);
   if (el==='fire'){ hostAddZone('fire', x, z, 1.5, 3.5, idx); }
-  else if (el==='water'){ hostAddZone('frost', x, z, 2.0, 4.5, idx); }
+  else if (el==='water'){ hostAddZone('puddle', x, z, 2.0, 4.5, idx); }
   else if (el==='wood'){ hostAddZone('bramble', x, z, 1.9, 6, idx); }
   else if (el==='metal'){ hostAddZone('shrapnel', x, z, 1.7, 5, idx); }
   else if (el==='ice'){ hostAddZone('ice', x, z, 2.0, 5, idx); }
@@ -2137,10 +2137,13 @@ function hostUseSkill(idx, d){
     }
   }
   else if (el==='water'){
-    for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team!==s.team){
-      if (o.pos.distanceTo(s.pos) < 14){ o.fx.slow = 4; }
+    // 滄浪之域：敵人浸濕重緩速、隊友身上的火被大水澆熄，腳下留水漫區
+    for (const o of slots) if (o.ctrl!=='empty' && o.alive){
+      if (o.pos.distanceTo(s.pos) >= 14) continue;
+      if (o.team!==s.team) o.fx.slow = 4;
+      else o.fx.burn = 0;
     }
-    hostAddZone('frost', d.p[0], d.p[2], 8, 6, idx);
+    hostAddZone('puddle', d.p[0], d.p[2], 8, 6, idx);
   }
   else if (el==='fire'){
     s.fx.haste = 2;
@@ -2239,7 +2242,21 @@ function hostUseUlt(idx){
     hostHeal(s, 100); s.fx.regen = 5;
     for (const o of foes) if (o.pos.distanceTo(s.pos)<28){ o.fx.root = 3; }
   } else if (el==='water'){
-    for (const o of foes){ hostDamage(o, 60*elemMult('water',CHARS[o.char].el), s, false, '滄海萬川'); o.fx.slow = 5; }
+    // 滄海萬川歸一：巨浪重創浸濕全場敵人並沖走，腳下留巨型水漫區
+    for (const o of foes){
+      hostDamage(o, 60*elemMult('water',CHARS[o.char].el), s, false, '滄海萬川');
+      o.fx.slow = 5;
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      const dx = op.x-s.pos.x, dz = op.z-s.pos.z, dl = Math.hypot(dx,dz)||1;
+      if (o.ctrl==='bot'){
+        o.pos.x = clamp(o.pos.x + dx/dl*3, -57, 57);
+        o.pos.z = clamp(o.pos.z + dz/dl*3, -57, 57);
+      } else {
+        const pe = {t:'ev', k:'push', i:o.idx, x:+(dx/dl*10).toFixed(1), z:+(dz/dl*10).toFixed(1), y:2.5};
+        bcast(pe); onGameEvent(pe);
+      }
+    }
+    hostAddZone('puddle', s.pos.x, s.pos.z, 8, 7, idx);
   } else if (el==='fire'){
     ev.targets = foes.map(o=> [+o.pos.x.toFixed(1), +o.pos.z.toFixed(1)]);
     setTimeout(()=>{ if(!started) return;
@@ -3020,7 +3037,7 @@ function hostNadeBoom(srcIdx, x, y, z){
   // 落點留下屬性區域（比子彈觸發的更大）
   const zx = clamp(x, -56, 56), zz = clamp(z, -56, 56);
   if (el==='fire') hostAddZone('fire', zx, zz, 2.6, 5, srcIdx);
-  else if (el==='water') hostAddZone('frost', zx, zz, 3, 5.5, srcIdx);
+  else if (el==='water') hostAddZone('puddle', zx, zz, 3, 5.5, srcIdx);
   else if (el==='wood') hostAddZone('bramble', zx, zz, 2.8, 6, srcIdx);
   else if (el==='metal') hostAddZone('shrapnel', zx, zz, 2.6, 5.5, srcIdx);
   else if (el==='ice') hostAddZone('ice', zx, zz, 2.8, 5.5, srcIdx);
@@ -3388,7 +3405,7 @@ function hostAddZone(kind, x, z, r, dur, src){
     for (const [id,zn] of hzones){
       const d2 = (zn.x-x)**2 + (zn.z-z)**2;
       if (d2 >= (zn.r+r)**2) continue;
-      if (zn.kind==='frost' || zn.kind==='ice'){ hostSteam((x+zn.x)/2, (z+zn.z)/2); return; }  // 水/冰滅火成蒸汽
+      if (zn.kind==='frost' || zn.kind==='ice' || zn.kind==='puddle'){ hostSteam((x+zn.x)/2, (z+zn.z)/2); return; }  // 水/冰滅火成蒸汽
       if (zn.kind==='bramble'){ hostEndZone(id); r += 1.1; dur += 1.5; }    // 木生火：荊棘引燃火勢更旺
     }
   }
@@ -3404,15 +3421,21 @@ function hostAddZone(kind, x, z, r, dur, src){
       if (d2 < (zn.r+r)**2){ hostAddZoneRaw('fire', x, z, r, 4, src); return; } // 荊棘落入火場直接燒起來
     }
   }
-  if (kind==='frost'){
+  if (kind==='frost' || kind==='puddle'){
     for (const [id,zn] of hzones) if (zn.kind==='fire'){
       const d2 = (zn.x-x)**2 + (zn.z-z)**2;
-      if (d2 < (zn.r+r)**2){ hostEndZone(id); hostSteam(zn.x, zn.z); }     // 寒潮撲滅火場
+      if (d2 < (zn.r+r)**2){ hostEndZone(id); hostSteam(zn.x, zn.z); }     // 大水/寒潮撲滅火場
     }
     for (const [wid,w] of wallsLive){                                       // 水+土 → 泥沼
       const c = w.colliders[0]; if(!c) continue;
       const wx=(c.x0+c.x1)/2, wz=(c.z0+c.z1)/2;
       if ((wx-x)**2+(wz-z)**2 < (r+2)**2) hostAddZoneRaw('mud', wx, wz, 3.2, 9, src);
+    }
+  }
+  if (kind==='shock'){
+    for (const [id,zn] of hzones) if (zn.kind==='puddle'){                  // 雷落水面 → 超導雷場更大更久
+      const d2 = (zn.x-x)**2 + (zn.z-z)**2;
+      if (d2 < (zn.r+r)**2){ r += 1.5; dur += 1.5; break; }
     }
   }
   if (kind==='gale'){
@@ -3495,6 +3518,21 @@ function spawnZoneVis(id, kind, x, z, r, dur){
       new THREE.MeshBasicMaterial({color:0x9fd8f0, transparent:true, opacity:.16, depthWrite:false}));
     disc.rotation.x = -Math.PI/2; disc.position.set(x, .04, z);
     group.add(disc);
+  } else if (kind==='puddle'){   // 水漫區：反光水面＋擴散漣漪（與冰系霜地明顯不同）
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 36),
+      new THREE.MeshStandardMaterial({color:0x2f6f9f, roughness:.08, metalness:.55, transparent:true, opacity:.72}));
+    disc.rotation.x = -Math.PI/2; disc.position.set(x, .045, z);
+    group.add(disc);
+    const rip = [];
+    for (let i=0;i<2;i++){
+      const rr = new THREE.Mesh(new THREE.RingGeometry(.3, .36, 28),
+        new THREE.MeshBasicMaterial({color:0x9adcff, transparent:true, opacity:.5, side:THREE.DoubleSide,
+          blending:THREE.AdditiveBlending, depthWrite:false}));
+      rr.rotation.x = -Math.PI/2; rr.position.set(x, .07, z);
+      rr.userData.ph = i*0.5;
+      group.add(rr); rip.push(rr);
+    }
+    group.userData.ripples = rip;
   } else if (kind==='mud'){
     const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 24),
       new THREE.MeshStandardMaterial({color:0x4a3a24, roughness:1, transparent:true, opacity:.9}));
@@ -3661,6 +3699,17 @@ function zoneVisTick(){
     if (v.kind==='sanct' && Math.random()<.2)    // 金色光塵飄升
       spawnSmoke(v.x+rand(-v.r*.7,v.r*.7), .2, v.z+rand(-v.r*.7,v.r*.7),
         {n:1, size:.14, color:0xffe9a0, add:true, rise:1.6, life:1.1, grow:-.05, opacity:.95, spread:.05});
+    if (v.kind==='puddle'){   // 水漫區：漣漪由中心向外擴散＋偶發水花
+      const rip = v.group.userData.ripples;
+      if (rip) rip.forEach(rr=>{
+        const k = (t*.45 + rr.userData.ph) % 1;
+        const sc = (0.3 + (v.r-0.36)*k) / 0.33;
+        rr.scale.set(sc, sc, 1);
+        rr.material.opacity = .5*(1-k);
+      });
+      if (Math.random()<.06)
+        sparkBurst(new THREE.Vector3(v.x+rand(-v.r*.6,v.r*.6), .15, v.z+rand(-v.r*.6,v.r*.6)), 0x9adcff, 2, 1.2);
+    }
     if (v.kind==='chrono'){   // 時緩域：時鐘盤緩慢逆轉＋時塵
       const ch = v.group.userData.chrono;
       if (ch){ ch.rings[0].rotation.z += .015; ch.rings[1].rotation.z -= .04; ch.hand.rotation.y -= .02; }
@@ -4001,13 +4050,26 @@ function hostTick(dt){
         if (src && o.team===src.team){ hostHeal(o, 13*dt); o.fx.blind = 0; }
         continue;
       }
+      if (zn.kind==='puddle' && src && o.team===src.team){ o.fx.burn = 0; continue; }  // 水漫區：澆熄隊友身上的火
       if (src && o.team === src.team) continue;   // 其餘區域只影響施放者的敵隊
       if (zn.kind==='fire'){ o.fx.burn = Math.max(o.fx.burn, .8); o.fx.burnSrc = zn.src; }
       else if (zn.kind==='frost'){ o.fx.slow = Math.max(o.fx.slow, .5); }
+      else if (zn.kind==='puddle'){ o.fx.slow = Math.max(o.fx.slow, .4); }  // 浸濕：緩速並可被雷超導
       else if (zn.kind==='mud'){ o.fx.slow = Math.max(o.fx.slow, .5); }
       else if (zn.kind==='bramble'){ o.fx.slow = Math.max(o.fx.slow, .5); hostDamage(o, 5*dt, slots[zn.src], false, '荊棘'); }
       else if (zn.kind==='shrapnel'){ hostDamage(o, 8*dt, slots[zn.src], false, '碎刃'); }
-      else if (zn.kind==='ice'){ o.fx.slow = Math.max(o.fx.slow, .7); hostDamage(o, 3*dt, slots[zn.src], false, '冰封'); }
+      else if (zn.kind==='ice'){   // 冰封地：重緩速＋持續傷害＋站在裡面會被疊凍到冰封
+        o.fx.slow = Math.max(o.fx.slow, .7); hostDamage(o, 3*dt, slots[zn.src], false, '冰封');
+        if (Math.random() < dt*0.5){
+          o.fx.frz++; o.fx.frzT = 4;
+          if (o.fx.frz >= 3){
+            o.fx.frz = 0; o.fx.stun = Math.max(o.fx.stun, 1.5); o.fx.slow = Math.max(o.fx.slow, 2.5);
+            const fp = o.idx===myIdx ? me.pos : o.pos;
+            const fe = {t:'ev', k:'frzfx', x:+fp.x.toFixed(1), y:+(fp.y+1).toFixed(1), z:+fp.z.toFixed(1)};
+            bcast(fe); onGameEvent(fe);
+          }
+        }
+      }
       else if (zn.kind==='shock'){ hostDamage(o, 10*dt, slots[zn.src], false, '雷場');
         if (Math.random() < dt*0.7) o.fx.stun = Math.max(o.fx.stun, 0.3); }
       else if (zn.kind==='gale'){   // 亂流：把敵人往外推、干擾行動
