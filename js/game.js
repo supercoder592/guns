@@ -1348,6 +1348,8 @@ const me = {
   zoomed:false, bobT:0, dead:false, nades:2,
   pose:0, eyeH:1.62, slideT:0, slideDir:new THREE.Vector3(),   // 0站 1蹲 2滑壘
   hist:[], _histT:0,          // 時系：位置/血量歷史（每 0.25s 一筆，約 3 秒前可回溯）
+  _swapT:0, _swapTo:2,        // 換槍兩段式動畫：收槍(1→0) → 換模型舉槍
+  _magDrop:false, _rack:false,// 換彈動畫階段旗標：退彈匣 / 拉槍機
 };
 const keys = {};
 let locked = false;
@@ -1499,7 +1501,19 @@ function updateLocal(dt){
   me.recoil *= Math.pow(0.001, dt);
   me.spreadHeat = Math.max(0, me.spreadHeat - dt*2.2);
 
-  // 槍模動態（CS 手感）：視角慣性搖擺、移動起伏、換槍舉槍、換彈下壓
+  // 換槍兩段式：收槍（下壓翻轉）→ 到位換模型 → 舉槍
+  if (me._swapT > 0){
+    me._swapT -= dt*7.5;   // 收槍約 0.13 秒
+    if (me._swapT <= 0){
+      me._swapT = 0;
+      me.gun = me._swapTo; me.ammo = GUNS[me.gun].mag; me.reloading = 0;
+      vmDraw = 1;   // 舉槍動畫
+      sfx('reload', .45);
+      rebuildViewmodel(); updateAmmoUI(); updateTouchGunUI();
+    }
+  }
+
+  // 槍模動態（CS 手感）：視角慣性搖擺、移動起伏、換槍收槍/舉槍、換彈多段動作
   vmDraw = Math.max(0, vmDraw - dt*3.4);
   const swTX = clamp(-lookDX*0.00055, -.035, .035);
   const swTY = clamp(lookDY*0.00045, -.03, .03);
@@ -1508,12 +1522,23 @@ function updateLocal(dt){
   vmSwayY += (swTY - vmSwayY)*Math.min(1, dt*7);
   if (viewmodel){
     const mv = slot.moving ? (sprinting?1.5:1) : 0;
-    const rl = me.reloading > 0 ? 1 : 0;
-    viewmodel.position.x = 0.22 + vmSwayX + mv*Math.sin(me.bobT)*0.009;
+    // 換彈多段動畫：槍身收低左傾看彈匣井 → 退彈匣（實體掉落）→ 上新彈匣 → 拉槍機舉回
+    let rl = 0;
+    if (me.reloading > 0 && GUNS[me.gun].reload > 0){
+      const k = 1 - me.reloading / GUNS[me.gun].reload;    // 換彈進度 0→1
+      rl = k < .16 ? k/.16 : k > .84 ? (1-k)/.16 : 1;      // 收低/舉回的平滑窗
+      if (!me._magDrop && k > .22){ me._magDrop = true; dropMagazine(); }       // 退彈匣
+      if (k > .5 && k < .6) rl += Math.sin((k-.5)/.1*Math.PI)*.14;              // 上彈匣：拍入頓挫
+      if (!me._rack && k > .86){ me._rack = true; sfx('click', .9);             // 拉槍機
+        viewmodel.position.z = 0.06; }                     // 槍身短促後拉（走原有回彈衰減）
+    }
+    const hol = me._swapT;   // 換槍收槍
+    viewmodel.position.x = 0.22 + vmSwayX + mv*Math.sin(me.bobT)*0.009 - rl*0.05;
     viewmodel.position.y = -0.2 + vmSwayY*0.6 - mv*Math.abs(Math.cos(me.bobT))*0.011
-                           - vmDraw*0.24 - rl*(0.06 + Math.sin(now()*7)*0.015);
-    viewmodel.rotation.z = -vmSwayX*1.7 - mv*Math.sin(me.bobT)*0.012;
-    viewmodel.rotation.x = 0.02 + vmSwayY*2.2 - vmDraw*1.0 - rl*0.38;
+                           - vmDraw*0.24 - hol*0.26 - rl*(0.1 + Math.sin(now()*6)*0.012);
+    viewmodel.rotation.y = 0.05 + rl*0.22 + hol*0.25;
+    viewmodel.rotation.z = -vmSwayX*1.7 - mv*Math.sin(me.bobT)*0.012 + rl*0.34;
+    viewmodel.rotation.x = 0.02 + vmSwayY*2.2 - vmDraw*1.0 - hol*1.1 - rl*0.5;
   }
 
   // 開火 / 換彈
@@ -1564,6 +1589,7 @@ function shootTargets(){
   return list;
 }
 function tryFire(){
+  if (me._swapT > 0) return;                       // 換槍中不能開火
   const gat = slots[myIdx].fx.gat > 0;             // 萬刃殲滅砲形態
   const g = gat ? GUNS[5] : GUNS[me.gun];
   if (!gat && me.reloading>0){   // 換彈中按扳機：機械空響提示
@@ -1710,9 +1736,23 @@ function reportGroundHit(pt){
   else if (conns[0]) send(conns[0], {t:'ghit', x:+pt.x.toFixed(1), y:+pt.y.toFixed(1), z:+pt.z.toFixed(1)});
 }
 function startReload(){
-  if (me.reloading>0 || me.ammo===GUNS[me.gun].mag) return;
+  if (me.reloading>0 || me._swapT>0 || me.ammo===GUNS[me.gun].mag) return;
   me.reloading = GUNS[me.gun].reload;
+  me._magDrop = false; me._rack = false;   // 重置換彈動畫階段
   sfx('reload');
+}
+function dropMagazine(){
+  // 換彈動畫：退出的空彈匣實體掉落（走碎片物理）
+  if (!camera) return;
+  const p = camera.localToWorld(new THREE.Vector3(0.2, -0.32, -0.42));
+  if (phys.length>=MAX_PHYS){ const old=phys.shift(); scene.remove(old.mesh); }
+  const m = new THREE.Mesh(debrisGeo, new THREE.MeshStandardMaterial({color:0x2c3138, metalness:.5, roughness:.5}));
+  m.scale.set(.035, .12, .05);
+  m.position.copy(p);
+  scene.add(m);
+  phys.push({mesh:m, v:new THREE.Vector3(rand(-.4,.4), -1.4, rand(-.4,.4)),
+    av:new THREE.Vector3(rand(-6,6), rand(-6,6), rand(-6,6)), r:.05, bounce:.25, die:now()+2.5});
+  sfx('click', .5);
 }
 function reportHit(victim, part, gun, dist){
   if (isHost) hostApplyHit(myIdx, victim, part, gun, dist);
@@ -2236,50 +2276,124 @@ function hostUseUlt(idx){
   const el = CHARS[s.char].el;
   const ev = {t:'ev', k:'ult', i:idx, el, p:[+s.pos.x.toFixed(1),+s.pos.y.toFixed(1),+s.pos.z.toFixed(1)]};
   const foes = slots.filter(o=> o.ctrl!=='empty' && o.alive && o.team!==s.team);
+  const fwd = [+(-Math.sin(s.ry)).toFixed(3), +(-Math.cos(s.ry)).toFixed(3)];   // 指向技共用：面向方向
   if (el==='metal'){
-    s.fx.gat = 8;   // 萬刃殲滅砲：8 秒加特林形態，子彈貫穿掩體
+    s.fx.gat = 8;   // 萬刃殲滅砲：8 秒加特林「形態變身」，子彈貫穿掩體
   } else if (el==='wood'){
-    hostHeal(s, 100); s.fx.regen = 5;
-    for (const o of foes) if (o.pos.distanceTo(s.pos)<28){ o.fx.root = 3; }
+    // 世界樹之怒：生命吸取藤網——30m 內敵人被藤蔓纏繞，4 秒間持續吸血回饋施放者
+    s.fx.regen = 5;
+    ev.tg = [];
+    for (const o of foes){
+      const op = o.idx===myIdx ? me.pos : o.pos;
+      if ((op.x-s.pos.x)**2 + (op.z-s.pos.z)**2 > 900) continue;
+      o.fx.root = 2.5;
+      ev.tg.push([+op.x.toFixed(1), +op.z.toFixed(1)]);
+      for (let tick=1; tick<=5; tick++){
+        setTimeout(()=>{
+          if (!started || !o.alive || !s.alive) return;
+          hostDamage(o, 6*elemMult('wood',CHARS[o.char].el), s, false, '生命吸取');
+          hostHeal(s, 6);
+          if (tick===1 || tick===3){   // 吸取束視覺
+            const op2 = o.idx===myIdx ? me.pos : o.pos;
+            const de = {t:'ev', k:'drain', a:[+op2.x.toFixed(1),+op2.z.toFixed(1)],
+                        b:[+s.pos.x.toFixed(1),+s.pos.z.toFixed(1)]};
+            bcast(de); onGameEvent(de);
+          }
+        }, tick*800);
+      }
+    }
   } else if (el==='water'){
-    // 滄海萬川歸一：巨浪重創浸濕全場敵人並沖走，腳下留巨型水漫區
-    for (const o of foes){
-      hostDamage(o, 60*elemMult('water',CHARS[o.char].el), s, false, '滄海萬川');
-      o.fx.slow = 5;
-      const op = o.idx===myIdx ? me.pos : o.pos;
-      const dx = op.x-s.pos.x, dz = op.z-s.pos.z, dl = Math.hypot(dx,dz)||1;
-      if (o.ctrl==='bot'){
-        o.pos.x = clamp(o.pos.x + dx/dl*3, -57, 57);
-        o.pos.z = clamp(o.pos.z + dz/dl*3, -57, 57);
-      } else {
-        const pe = {t:'ev', k:'push', i:o.idx, x:+(dx/dl*10).toFixed(1), z:+(dz/dl*10).toFixed(1), y:2.5};
-        bcast(pe); onGameEvent(pe);
-      }
+    // 滄海萬川歸一：面向方向推進 36m 的海嘯浪牆（直線指向技）——被浪牆掃過才受擊，可走位閃避
+    ev.dir = fwd;
+    const ox = s.pos.x, oz = s.pos.z;
+    const hitSet = new Set();
+    for (let st=0; st<10; st++){
+      setTimeout(()=>{
+        if (!started) return;
+        const front = 3.5 + st*3.6;   // 浪牆前緣位置
+        for (const o of slots){
+          if (o.ctrl==='empty' || !o.alive || o.team===s.team || hitSet.has(o.idx)) continue;
+          const op = o.idx===myIdx ? me.pos : o.pos;
+          const rx = op.x-ox, rz = op.z-oz;
+          const along = rx*fwd[0] + rz*fwd[1];
+          const side  = Math.abs(rx*-fwd[1] + rz*fwd[0]);
+          if (side > 6 || Math.abs(along-front) > 3.2) continue;
+          hitSet.add(o.idx);
+          hostDamage(o, 75*elemMult('water',CHARS[o.char].el), s, false, '滄海萬川');
+          o.fx.slow = 5;
+          if (o.ctrl==='bot'){   // 被巨浪捲著走
+            o.pos.x = clamp(o.pos.x + fwd[0]*4, -57, 57);
+            o.pos.z = clamp(o.pos.z + fwd[1]*4, -57, 57);
+          } else {
+            const pe = {t:'ev', k:'push', i:o.idx, x:+(fwd[0]*13).toFixed(1), z:+(fwd[1]*13).toFixed(1), y:3};
+            bcast(pe); onGameEvent(pe);
+          }
+        }
+        if (st%3===1) hostAddZone('puddle', clamp(ox+fwd[0]*front,-56,56), clamp(oz+fwd[1]*front,-56,56), 3.2, 6, idx);
+      }, st*130);
     }
-    hostAddZone('puddle', s.pos.x, s.pos.z, 8, 7, idx);
   } else if (el==='fire'){
-    ev.targets = foes.map(o=> [+o.pos.x.toFixed(1), +o.pos.z.toFixed(1)]);
-    setTimeout(()=>{ if(!started) return;
-      for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team!==s.team){
-        hostDamage(o, 85*elemMult('fire',CHARS[o.char].el), s, false, '鳳凰劫');
-        o.fx.burn = 4; o.fx.burnSrc = idx;
-      }
-      for (const [tx,tz] of ev.targets) hostAddZone('fire', tx, tz, 2.4, 4.5, idx);
-    }, 700);
-  } else if (el==='earth'){
-    for (const o of foes) if (o.pos.distanceTo(s.pos)<26){
-      hostDamage(o, 70*elemMult('earth',CHARS[o.char].el), s, false, '山崩地裂');
-      o.fx.stun = Math.max(o.fx.stun, 2.5);
+    // 鳳凰劫：面向方向的隕焰轟炸走廊——6 顆隕石沿線依序落下（不再全圖鎖定）
+    ev.dir = fwd;
+    ev.targets = [];
+    for (let i=0;i<6;i++){
+      const d0 = 6 + i*5;
+      const tx = clamp(s.pos.x + fwd[0]*d0 + rand(-2,2), -56, 56);
+      const tz = clamp(s.pos.z + fwd[1]*d0 + rand(-2,2), -56, 56);
+      ev.targets.push([+tx.toFixed(1), +tz.toFixed(1)]);
+      setTimeout(()=>{
+        if (!started) return;
+        for (const o of slots){
+          if (o.ctrl==='empty' || !o.alive || o.team===s.team) continue;
+          const op = o.idx===myIdx ? me.pos : o.pos;
+          if ((op.x-tx)**2 + (op.z-tz)**2 > 20) continue;   // 每顆半徑約 4.5m
+          hostDamage(o, 70*elemMult('fire',CHARS[o.char].el), s, false, '鳳凰劫');
+          o.fx.burn = 4; o.fx.burnSrc = idx;
+        }
+        hostAddZone('fire', tx, tz, 2.4, 4.5, idx);
+      }, 500 + i*170);
     }
-    ev.wid = ++wallSeq; // 環形岩陣（以 wid 起算 8 座）
-    wallSeq += 7;
+  } else if (el==='earth'){
+    // 山崩地裂：地裂衝擊波沿面向方向竄行 26m（直線指向技），路徑上敵人擊飛暈眩，盡頭隆起岩脊
+    ev.dir = fwd;
+    const ox = s.pos.x, oz = s.pos.z;
+    const hitSet = new Set();
+    for (let st=0; st<9; st++){
+      setTimeout(()=>{
+        if (!started) return;
+        const d0 = 3 + st*2.9;
+        const cx = ox+fwd[0]*d0, cz = oz+fwd[1]*d0;
+        for (const o of slots){
+          if (o.ctrl==='empty' || !o.alive || o.team===s.team || hitSet.has(o.idx)) continue;
+          const op = o.idx===myIdx ? me.pos : o.pos;
+          if ((op.x-cx)**2 + (op.z-cz)**2 > 12.25) continue;   // 裂縫半寬 3.5m
+          hitSet.add(o.idx);
+          hostDamage(o, 75*elemMult('earth',CHARS[o.char].el), s, false, '山崩地裂');
+          o.fx.stun = Math.max(o.fx.stun, 2);
+          if (o.ctrl!=='bot'){ const pe = {t:'ev', k:'push', i:o.idx, x:0, z:0, y:6}; bcast(pe); onGameEvent(pe); }
+        }
+      }, st*90);
+    }
+    ev.wid = ++wallSeq;   // 裂縫盡頭隆起三段岩脊
+    ev.wx = +clamp(ox+fwd[0]*26,-55,55).toFixed(1);
+    ev.wz = +clamp(oz+fwd[1]*26,-55,55).toFixed(1);
+    ev.wry = +Math.atan2(fwd[0], fwd[1]).toFixed(2);
   } else if (el==='ice'){
-    // 千里冰封：全場敵人冰封 3 秒
+    // 千里冰封：急凍新星由腳下向外擴散（11m/s）——冰環掃到才凍結，離得遠有時間跑出 36m 邊緣
     for (const o of foes){
-      hostDamage(o, 55*elemMult('ice',CHARS[o.char].el), s, false, '永凍');
-      o.fx.stun = Math.max(o.fx.stun, 3); o.fx.slow = 5; o.fx.frz = 0;
-      const op = o.idx===myIdx ? me.pos : o.pos;
-      hostAddZone('ice', op.x, op.z, 2.5, 6, idx);
+      const op0 = o.idx===myIdx ? me.pos : o.pos;
+      const d0 = Math.hypot(op0.x-s.pos.x, op0.z-s.pos.z);
+      if (d0 > 36) continue;
+      setTimeout(()=>{
+        if (!started || !o.alive) return;
+        const op = o.idx===myIdx ? me.pos : o.pos;
+        if (Math.hypot(op.x-s.pos.x, op.z-s.pos.z) > 36) return;   // 跑出新星就躲過
+        hostDamage(o, 55*elemMult('ice',CHARS[o.char].el), s, false, '永凍');
+        o.fx.stun = Math.max(o.fx.stun, 2.5); o.fx.slow = 5; o.fx.frz = 0;
+        const fe = {t:'ev', k:'frzfx', x:+op.x.toFixed(1), y:+(op.y+1).toFixed(1), z:+op.z.toFixed(1)};
+        bcast(fe); onGameEvent(fe);
+        hostAddZone('ice', op.x, op.z, 2.5, 6, idx);
+      }, d0/11*1000);
     }
   } else if (el==='thunder'){
     // 九天玄雷（削弱版）：三波天雷改轟 32m 內敵人，單波傷害與暈眩下調
@@ -2319,14 +2433,15 @@ function hostUseUlt(idx){
     }
     hostAddZone('gale', s.pos.x, s.pos.z, 7, 6, idx);
   } else if (el==='dark'){
-    // 永夜降臨：全場敵人陷入黑暗、自身長匿蹤，敵人腳下生暗幕
-    s.fx.stealth = 5;
+    // 永夜降臨：黑暗穹頂（區域統治）——11m 穹頂罩下 8 秒，內部敵人持續致盲；穹頂外不受影響
+    s.fx.stealth = 6; s.fx.haste = 2;
     for (const o of foes){
-      hostDamage(o, 45*elemMult('dark',CHARS[o.char].el), s, false, '永夜');
-      o.fx.blind = Math.max(o.fx.blind, 4);
       const op = o.idx===myIdx ? me.pos : o.pos;
-      hostAddZone('gloom', op.x, op.z, 3, 6, idx);
+      if ((op.x-s.pos.x)**2 + (op.z-s.pos.z)**2 > 121) continue;
+      hostDamage(o, 40*elemMult('dark',CHARS[o.char].el), s, false, '永夜');
+      o.fx.blind = Math.max(o.fx.blind, 3);
     }
+    hostAddZoneRaw('gloom', s.pos.x, s.pos.z, 11, 8, idx);
   } else if (el==='light'){
     // 審判之曦：全隊滿療＋再生，敵人受聖光審判並致盲
     for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team===s.team){
@@ -2345,24 +2460,26 @@ function hostUseUlt(idx){
       o.fx.tslow = Math.max(o.fx.tslow, 4);
     }
   } else if (el==='sound'){
-    // 鳴神咆哮：34m 內重創震聾＋技能封鎖＋衝擊波擊飛，留下巨型聲場
+    // 鳴神咆哮：面向 ±50° 的扇形音爆（指向技）——只有被正面吼到的敵人受擊
+    ev.dir = fwd;
     for (const o of foes){
       const op = o.idx===myIdx ? me.pos : o.pos;
-      const dx = op.x-s.pos.x, dz = op.z-s.pos.z, dl = Math.hypot(dx,dz)||1;
-      if (dl > 34) continue;
-      hostDamage(o, 55*elemMult('sound',CHARS[o.char].el), s, false, '鳴神咆哮');
+      const rx = op.x-s.pos.x, rz = op.z-s.pos.z, dl = Math.hypot(rx,rz)||1;
+      if (dl > 30) continue;
+      if ((rx*fwd[0] + rz*fwd[1]) / dl < 0.64) continue;   // 扇形 ±50°
+      hostDamage(o, 65*elemMult('sound',CHARS[o.char].el), s, false, '鳴神咆哮');
       o.fx.silence = Math.max(o.fx.silence, 4.5);
       o.fx.deaf = Math.max(o.fx.deaf, 3);
       if (o.ctrl==='bot'){
-        o.pos.x = clamp(o.pos.x + dx/dl*3, -57, 57);
-        o.pos.z = clamp(o.pos.z + dz/dl*3, -57, 57);
+        o.pos.x = clamp(o.pos.x + fwd[0]*3.5, -57, 57);
+        o.pos.z = clamp(o.pos.z + fwd[1]*3.5, -57, 57);
         o.fx.stun = Math.max(o.fx.stun, .6);
       } else {
-        const pe = {t:'ev', k:'push', i:o.idx, x:+(dx/dl*12).toFixed(1), z:+(dz/dl*12).toFixed(1), y:4};
+        const pe = {t:'ev', k:'push', i:o.idx, x:+(fwd[0]*14).toFixed(1), z:+(fwd[1]*14).toFixed(1), y:4};
         bcast(pe); onGameEvent(pe);
       }
     }
-    hostAddZone('echo', s.pos.x, s.pos.z, 6, 5, idx);
+    hostAddZone('echo', clamp(s.pos.x+fwd[0]*8,-56,56), clamp(s.pos.z+fwd[1]*8,-56,56), 5, 5, idx);
   }
   bcast(ev); onGameEvent(ev);
 }
@@ -2457,36 +2574,40 @@ function onGameEvent(d){
   else if (d.k==='ult'){
     const s = slots[d.i], c = CHARS[s.char], e = EL[c.el];
     ultCutin(c, e, s.idx===myIdx);
-    if (c.el==='water'){
-      ringFX(new THREE.Vector3(d.p[0],0.2,d.p[2]), 0x38bdf8, 60, 2.2);
-      waveRing(d.p[0], d.p[2], 0x49c8ff, 46, 1.9, 4.5);
-      waveRing(d.p[0], d.p[2], 0xbfeaff, 46, 2.3, 2.2);
-      spawnSmoke(d.p[0], .5, d.p[2], {n:14, size:2.4, color:0xcfeaff, rise:2.4, life:1.6, grow:1.6, opacity:.6, spread:3});
-      for (let i=0;i<8;i++){   // 八方水柱連環噴發
-        const a2 = i/8*Math.PI*2 + rand(-.2,.2);
-        setTimeout(()=> waterColumnFX(d.p[0]+Math.cos(a2)*rand(4,14), d.p[2]+Math.sin(a2)*rand(4,14), rand(5,8)), i*110);
-      }
+    if (c.el==='water' && d.dir){   // 海嘯浪牆：沿面向方向推進
+      waveWallFX(d.p[0], d.p[2], d.dir[0], d.dir[1]);
+      waveRing(d.p[0], d.p[2], 0xbfeaff, 10, .8, 2);
+      spawnSmoke(d.p[0], .5, d.p[2], {n:8, size:1.8, color:0xcfeaff, rise:1.8, life:1, grow:1.2, opacity:.6, spread:1.5});
     }
     if (c.el==='wood'){
       ringFX(new THREE.Vector3(d.p[0],0.2,d.p[2]), 0x4ade80, 30, 1.6);
-      spikeBurst(d.p[0], d.p[2], 0x2f9e57, 18, 3, 20, 3.2);   // 世界樹根鞭破土
+      spikeBurst(d.p[0], d.p[2], 0x2f9e57, 12, 2, 8, 2.6);   // 世界樹根鞭破土
       sparkBurst(new THREE.Vector3(d.p[0], 1.5, d.p[2]), 0x7dfa9e, 20, 6);
+      if (d.tg) for (const [tx,tz] of d.tg){   // 藤蔓竄向每個獵物
+        spikeBurst(tx, tz, 0x2f9e57, 6, .3, 1.6, 1.8);
+        arcLine(new THREE.Vector3(d.p[0], 1.2, d.p[2]), new THREE.Vector3(tx, 1, tz), .6, 0x4ade80);
+      }
     }
     if (c.el==='earth'){
       shakeCam(0.5);
-      spikeBurst(d.p[0], d.p[2], 0x8a6a3c, 14, 4, 22, 2.6);   // 岩刺
-      spawnSmoke(d.p[0], .4, d.p[2], {n:16, size:2.6, color:0xa08b62, rise:1.2, life:2.4, grow:1.8, opacity:.6, spread:6});
-      spawnDebris(d.p[0], 1, d.p[2], 0x8a6a3c, 12, {spd:9});
-      if (d.wid !== undefined){
-        for (let i=0;i<8;i++){
-          const a = i/8*Math.PI*2;
-          spawnEarthWall(d.wid+i, d.p[0]+Math.cos(a)*6, d.p[2]+Math.sin(a)*6, -a);
+      spawnDebris(d.p[0], 1, d.p[2], 0x8a6a3c, 8, {spd:8});
+      if (d.dir){   // 地裂沿面向方向逐段竄行
+        for (let i2=0;i2<9;i2++){
+          const dd = 3 + i2*2.9;
+          const px = d.p[0]+d.dir[0]*dd, pz = d.p[2]+d.dir[1]*dd;
+          setTimeout(()=>{
+            spikeBurst(px, pz, 0x8a6a3c, 6, 0, 2.4, 2.4);
+            spawnSmoke(px, .4, pz, {n:3, size:1.4, color:0xa08b62, rise:1, life:1.4, grow:1.2, opacity:.55, spread:1});
+            spawnDebris(px, .6, pz, 0x8a6a3c, 3, {spd:6});
+            shakeCam(.12); sfx('boom', .25);
+          }, i2*90);
         }
       }
+      if (d.wid !== undefined) setTimeout(()=> spawnEarthWall(d.wid, d.wx, d.wz, d.wry), 850);   // 裂縫盡頭岩脊
     }
-    if (c.el==='fire' && d.targets){
+    if (c.el==='fire' && d.targets){   // 隕焰轟炸走廊：沿線依序落下
       sfx('boom');
-      for (const [x,z] of d.targets) setTimeout(()=> meteorFX(x,z), rand(400,900));
+      d.targets.forEach(([x,z], i2)=> setTimeout(()=> meteorFX(x, z), 220 + i2*170));
     }
     if (c.el==='metal'){ bladeOrbit(d.i, 6); }               // 環體飛劍演出
     if (c.el==='wind'){
@@ -2495,8 +2616,8 @@ function onGameEvent(d){
       waveRing(d.p[0], d.p[2], 0xe0fff4, 40, 2.4, 2);
       windVortexFX(d.p[0], d.p[2]);
     }
-    if (c.el==='dark'){
-      darkNovaFX(d.p[0], d.p[2]);
+    if (c.el==='dark'){   // 黑暗穹頂：罩下 8 秒的半球結界
+      darkDomeFX(d.p[0], d.p[2], 11, 8);
       spawnSmoke(d.p[0], .8, d.p[2], {n:14, size:2.4, color:0x0b0614, rise:1.4, life:2.4, grow:1.6, opacity:.85, spread:4});
     }
     if (c.el==='light'){
@@ -2508,10 +2629,12 @@ function onGameEvent(d){
       lightPillarFX(d.p[0], d.p[2], 2.2);
       sparkBurst(new THREE.Vector3(d.p[0], 1.6, d.p[2]), 0xfff8d8, 24, 7);
     }
-    if (c.el==='ice'){
-      waveRing(d.p[0], d.p[2], 0xbfeaff, 50, 2, 3.5);
-      spikeBurst(d.p[0], d.p[2], 0xd8f2ff, 24, 4, 26, 2.8);  // 全場冰晶
-      spawnSmoke(d.p[0], .6, d.p[2], {n:16, size:2.6, color:0xe8f6ff, rise:1.2, life:2.4, grow:1.5, opacity:.6, spread:8});
+    if (c.el==='ice'){   // 急凍新星：冰環以 11m/s 向外掃（與凍結判定同步）
+      waveRing(d.p[0], d.p[2], 0xbfeaff, 36, 3.3, 3);
+      waveRing(d.p[0], d.p[2], 0xffffff, 36, 3.3, 1.2);
+      for (let i2=0;i2<8;i2++)   // 冰晶沿擴散圈分批隆起
+        setTimeout(()=> spikeBurst(d.p[0], d.p[2], 0xd8f2ff, 6, 3+i2*4, 6+i2*4, 2.2), i2*360);
+      spawnSmoke(d.p[0], .6, d.p[2], {n:10, size:2, color:0xe8f6ff, rise:1, life:2, grow:1.4, opacity:.55, spread:3});
     }
     if (c.el==='thunder'){ shakeCam(.4); sfx('zap'); thunderSkyFX(); }   // 天幕壓暗＋天際電弧；落雷由 boltset 呈現
     if (c.el==='time'){   // 時停：全畫面青藍時痕＋世界凝滯（子彈幾乎靜止）
@@ -2522,11 +2645,19 @@ function onGameEvent(d){
       spriteBurst(new THREE.Vector3(d.p[0], 1.5, d.p[2]), TEX.ring, 0x67e8f9, .5, 8, 1.2, .9);
       sfx('zap', .8);
     }
-    if (c.el==='sound'){  // 鳴神咆哮：層層聲爆衝擊環
+    if (c.el==='sound'){  // 鳴神咆哮：聲爆環沿吼聲方向逐層炸開（扇形指向）
       shakeCam(.5);
-      for (let i2=0;i2<5;i2++)
-        setTimeout(()=>{ waveRing(d.p[0], d.p[2], i2%2?0xffd9b0:0xfb923c, 40, 1.4, 3+i2); sfx('boom', .5); }, i2*200);
-      spawnSmoke(d.p[0], 1, d.p[2], {n:12, size:2, color:0xffc9a0, add:true, rise:1.5, life:1, grow:1.6, opacity:.5, spread:3});
+      if (d.dir){
+        for (let i2=0;i2<5;i2++){
+          const dd = 4 + i2*5.5;
+          setTimeout(()=>{
+            waveRing(d.p[0]+d.dir[0]*dd, d.p[2]+d.dir[1]*dd, i2%2?0xffd9b0:0xfb923c, 13, .9, 3+i2*.5);
+            sfx('boom', .45);
+          }, i2*120);
+        }
+      }
+      spawnSmoke(d.p[0]+ (d.dir?d.dir[0]*3:0), 1.2, d.p[2]+(d.dir?d.dir[1]*3:0),
+        {n:10, size:1.8, color:0xffc9a0, add:true, rise:1.2, life:.9, grow:1.6, opacity:.5, spread:2});
     }
   }
   else if (d.k==='wallgone'){ removeWall(d.id); }
@@ -2535,6 +2666,13 @@ function onGameEvent(d){
   else if (d.k==='zone'){ spawnZoneVis(d.id, d.kind, d.x, d.z, d.r, d.dur); }
   else if (d.k==='frzfx'){ iceShatterFX(d.x, d.y, d.z); }
   else if (d.k==='chain'){ arcLine(new THREE.Vector3(...d.a), new THREE.Vector3(...d.b), .6); sfx('zap', .4); }
+  else if (d.k==='drain'){   // 世界樹吸血束：獵物 → 施放者的綠色生命流
+    const a = new THREE.Vector3(d.a[0], 1.1, d.a[1]), b = new THREE.Vector3(d.b[0], 1.3, d.b[1]);
+    arcLine(a, b, .5, 0x4ade80);
+    arcLine(a, b, .2, 0x7dfa9e);
+    sparkBurst(b, 0x7dfa9e, 5, 2.5);
+    sparkBurst(a, 0x2f9e57, 3, 1.5);
+  }
   else if (d.k==='boltset'){ for (const [x,z] of d.pts) setTimeout(()=> lightningFX(x, z), rand(0,250)); }
   else if (d.k==='zoneend'){ const v=zoneVis.get(d.id); if(v){ v.until = 0; } }
   else if (d.k==='steam'){ steamFX(d.x, d.z); }
@@ -3305,6 +3443,57 @@ function thunderSkyFX(){ // 雷大招：天幕壓暗＋橫貫天際的巨型電�
     sfx('boom', .5); shakeCam(.15);
   };
   for (let i=0;i<5;i++) setTimeout(strike, i*420 + rand(0,180));
+}
+function waveWallFX(px, pz, fx2, fz2){ // 水大招：海嘯浪牆沿方向推進＋浪頭泡沫
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({color:0x49c8ff, transparent:true, opacity:.55,
+    blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide});
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(12, 4.5), mat);
+  wall.position.y = 2.2;
+  g.add(wall);
+  const cmat = new THREE.MeshBasicMaterial({color:0xdff4ff, transparent:true, opacity:.85,
+    blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide});
+  const crest = new THREE.Mesh(new THREE.PlaneGeometry(12, 1.1), cmat);
+  crest.position.y = 4.4;
+  g.add(crest);
+  g.position.set(px, 0, pz);
+  g.rotation.y = Math.atan2(fx2, fz2);
+  scene.add(g);
+  addSpecial(1.35, (dt,k)=>{
+    const d0 = 3.5 + 33*k;
+    g.position.set(px + fx2*d0, Math.sin(k*Math.PI)*.5, pz + fz2*d0);
+    mat.opacity = .55*(1-k*.55);
+    cmat.opacity = .85*(1-k*.4);
+    if (Math.random()<.8) spawnSmoke(g.position.x+rand(-5.5,5.5), rand(.3,4.4), g.position.z+rand(-1,1),
+      {n:1, size:.9, color:0xbfeaff, add:true, rise:.8, life:.4, grow:.8, opacity:.6, spread:.3});
+    if (Math.random()<.5) spawnDebris(g.position.x+rand(-5,5), .5, g.position.z, 0x9adcff, 1, {min:.04,max:.08,spd:3,bounce:.1});
+    if (k < .8) shakeCam(.06);
+  }, ()=> scene.remove(g));
+  sfx('steam', 1);
+}
+function darkDomeFX(x, z, r=11, dur=8){ // 暗大招：黑暗穹頂結界（持續數秒的區域統治）
+  const mat = new THREE.MeshBasicMaterial({color:0x0a0516, transparent:true, opacity:.5,
+    depthWrite:false, side:THREE.DoubleSide});
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 14, 0, Math.PI*2, 0, Math.PI/2), mat);
+  dome.position.set(x, 0, z);
+  scene.add(dome);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(r*.96, r*1.04, 48),
+    new THREE.MeshBasicMaterial({color:0x8b5cf6, transparent:true, opacity:.6, side:THREE.DoubleSide,
+      blending:THREE.AdditiveBlending, depthWrite:false}));
+  ring.rotation.x = -Math.PI/2; ring.position.set(x, .1, z);
+  scene.add(ring);
+  addSpecial(dur, (dt,k)=>{
+    const fade = k<.06 ? k/.06 : k>.85 ? (1-k)/.15 : 1;
+    mat.opacity = .5*fade;
+    dome.scale.setScalar(k<.06 ? .2+.8*(k/.06) : 1);
+    ring.material.opacity = (.45 + Math.sin(now()*4)*.15)*fade;
+    if (Math.random()<.3){   // 穹頂表面紫電竄行
+      const a = Math.random()*Math.PI*2, h = rand(.1, Math.PI/2*.9);
+      const p1 = new THREE.Vector3(x+Math.cos(a)*r*Math.cos(h), r*Math.sin(h), z+Math.sin(a)*r*Math.cos(h));
+      arcLine(p1, p1.clone().add(new THREE.Vector3(rand(-2,2), rand(-1,1), rand(-2,2))), .5, 0x8b5cf6);
+    }
+  }, ()=>{ scene.remove(dome); scene.remove(ring); });
+  shakeCam(.3); sfx('boom', .6);
 }
 function darkNovaFX(x, z){ // 暗大招：吞噬光明的黑暗新星
   const mat = new THREE.MeshBasicMaterial({color:0x07030e, transparent:true, opacity:.75, depthWrite:false});
@@ -4377,11 +4566,12 @@ addEventListener('keydown', e=>{
   }
 });
 function switchGun(i){
-  if (i===me.gun) return;
-  me.gun=i; me.ammo=GUNS[i].mag; me.reloading=0; me.zoomed=false;
-  vmDraw = 1;   // 舉槍動畫
+  if (i===me.gun || me._swapT > 0) return;
+  // 兩段式換槍：先收槍（下壓翻轉），到位後才換上新槍並播舉槍動畫（見 updateLocal）
+  me._swapTo = i;
+  me._swapT = 1;
+  me.zoomed = false; me.reloading = 0;
   sfx('click', .9);
-  rebuildViewmodel(); updateAmmoUI(); updateTouchGunUI();
 }
 function updateTouchGunUI(){
   if (!IS_TOUCH) return;
