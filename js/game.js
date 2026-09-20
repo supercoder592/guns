@@ -2413,51 +2413,47 @@ function hostUseUlt(idx){
     setTimeout(strike, 800);
     setTimeout(strike, 1600);
   } else if (el==='wind'){
-    // 九霄龍捲：全場敵人被捲向風眼、擊飛暈眩，留下巨型亂流域
+    // 九霄龍捲【零傷害·純位移】：把 32m 內敵人狠狠捲向風眼＋長暈眩，破壞陣型，留巨型亂流域
     for (const o of foes){
       const op = o.idx===myIdx ? me.pos : o.pos;
       const dx = s.pos.x-op.x, dz = s.pos.z-op.z, dl = Math.hypot(dx,dz)||1;
       if (dl > 32) continue;
-      hostDamage(o, 55*elemMult('wind',CHARS[o.char].el), s, false, '龍捲風暴');
-      o.fx.stun = Math.max(o.fx.stun, 1.3);
+      o.fx.stun = Math.max(o.fx.stun, 1.8);
       if (o.ctrl==='bot'){
-        const pull = Math.min(dl-2, 6);
+        const pull = Math.min(dl-2, 10);   // 拉得更狠（傷害拿掉的補償）
         if (pull > 0){
           o.pos.x = clamp(o.pos.x + dx/dl*pull, -57, 57);
           o.pos.z = clamp(o.pos.z + dz/dl*pull, -57, 57);
         }
       } else {
-        const pe = {t:'ev', k:'push', i:o.idx, x:+(dx/dl*10).toFixed(1), z:+(dz/dl*10).toFixed(1), y:6};
+        const pe = {t:'ev', k:'push', i:o.idx, x:+(dx/dl*14).toFixed(1), z:+(dz/dl*14).toFixed(1), y:7};
         bcast(pe); onGameEvent(pe);
       }
     }
-    hostAddZone('gale', s.pos.x, s.pos.z, 7, 6, idx);
+    hostAddZone('gale', s.pos.x, s.pos.z, 8, 7, idx);
   } else if (el==='dark'){
-    // 永夜降臨：黑暗穹頂（區域統治）——11m 穹頂罩下 8 秒，內部敵人持續致盲；穹頂外不受影響
-    s.fx.stealth = 6; s.fx.haste = 2;
+    // 永夜降臨【零傷害·視野統治】：11m 黑暗穹頂罩下 8 秒，內部敵人持續深度致盲；自身匿蹤加速
+    s.fx.stealth = 6; s.fx.haste = 2.5;
     for (const o of foes){
       const op = o.idx===myIdx ? me.pos : o.pos;
       if ((op.x-s.pos.x)**2 + (op.z-s.pos.z)**2 > 121) continue;
-      hostDamage(o, 40*elemMult('dark',CHARS[o.char].el), s, false, '永夜');
-      o.fx.blind = Math.max(o.fx.blind, 3);
+      o.fx.blind = Math.max(o.fx.blind, 3.5);
     }
     hostAddZoneRaw('gloom', s.pos.x, s.pos.z, 11, 8, idx);
   } else if (el==='light'){
-    // 審判之曦：全隊滿療＋再生，敵人受聖光審判並致盲
+    // 審判之曦【零傷害·純輔助】：全隊滿療＋再生＋2 秒聖盾（免傷）＋淨化，留大聖域
     for (const o of slots) if (o.ctrl!=='empty' && o.alive && o.team===s.team){
-      hostHeal(o, 100); o.fx.regen = Math.max(o.fx.regen, 4); o.fx.blind = 0;
+      hostHeal(o, 100);
+      o.fx.regen = Math.max(o.fx.regen, 5);
+      o.fx.shield = Math.max(o.fx.shield, 2);   // 聖盾：短暫免傷
+      o.fx.blind = 0; o.fx.burn = 0; o.fx.slow = 0; o.fx.root = 0;   // 淨化一切
     }
-    for (const o of foes){
-      hostDamage(o, 55*elemMult('light',CHARS[o.char].el), s, false, '審判之曦');
-      o.fx.blind = Math.max(o.fx.blind, 2.2);
-    }
-    hostAddZone('sanct', s.pos.x, s.pos.z, 6, 7, idx);
+    hostAddZone('sanct', s.pos.x, s.pos.z, 7, 8, idx);
   } else if (el==='time'){
-    // 剎那即永恆：時停——全場敵人凍結、時滯纏身
+    // 剎那即永恆【零傷害·純控場】：時停——全場敵人凍結 3 秒＋長時滯，飛行中的子彈懸停
     for (const o of foes){
-      hostDamage(o, 30*elemMult('time',CHARS[o.char].el), s, false, '時停');
-      o.fx.stun = Math.max(o.fx.stun, 2.5);
-      o.fx.tslow = Math.max(o.fx.tslow, 4);
+      o.fx.stun = Math.max(o.fx.stun, 3);
+      o.fx.tslow = Math.max(o.fx.tslow, 5);
     }
   } else if (el==='sound'){
     // 鳴神咆哮：面向 ±50° 的扇形音爆（指向技）——只有被正面吼到的敵人受擊
