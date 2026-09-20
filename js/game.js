@@ -1356,6 +1356,8 @@ let locked = false;
 let mouseDownL = false;
 // CS 式槍模動態：視角慣性搖擺 / 換槍舉槍 / 換彈下壓
 let vmSwayX = 0, vmSwayY = 0, lookDX = 0, lookDY = 0, vmDraw = 0;
+// 動畫強化：開火後座踢動 / 疾跑持槍姿勢 / 施法甩槍 / 準星開火擴張 / 落地鏡頭下沉 / 滑壘鏡頭側傾
+let vmKick = 0, vmSprint = 0, vmCast = 0, xhairKick = 0, camDip = 0, camRoll = 0;
 
 function eyeHeight(){ return me.eyeH; }
 const EYE = ()=> me.pos.y + eyeHeight();
@@ -1465,7 +1467,10 @@ function updateLocal(dt){
   if ((keys.Space || jumpQueued) && me.onGround && !rooted){ me.vel.y = 5.6; me.onGround=false; touchJump = 0; me.slideT = 0; }
   const wasAir = !me.onGround, fallV = me.vel.y;
   me.onGround = collideMove(me.pos, me.vel, dt, 0.36, me.pose===0 ? 1.8 : 1.2);
-  if (wasAir && me.onGround && fallV < -5) sfx('land', clamp(-fallV/12, .3, 1));   // 落地悶響
+  if (wasAir && me.onGround){
+    if (fallV < -3) camDip = Math.min(.5, -fallV*0.032);   // 落地鏡頭下沉（隨落速）
+    if (fallV < -5) sfx('land', clamp(-fallV/12, .3, 1));  // 落地悶響
+  }
   me.pos.x = clamp(me.pos.x, -58, 58);
   me.pos.z = clamp(me.pos.z, -58, 58);
 
@@ -1498,8 +1503,16 @@ function updateLocal(dt){
   camera.rotation.set(0,0,0);
   camera.rotateY(me.yaw);
   camera.rotateX(me.pitch + me.recoil);
+  // 滑壘鏡頭側傾＋落地下沉
+  camRoll += ((me.pose===2 ? 0.085 : 0) - camRoll)*Math.min(1, dt*10);
+  if (Math.abs(camRoll) > 0.002) camera.rotateZ(camRoll);
+  camDip *= Math.pow(0.002, dt);
+  camera.position.y -= camDip*0.35;
   me.recoil *= Math.pow(0.001, dt);
   me.spreadHeat = Math.max(0, me.spreadHeat - dt*2.2);
+  vmKick *= Math.pow(0.0005, dt);
+  xhairKick *= Math.pow(0.01, dt);
+  vmCast = Math.max(0, vmCast - dt*3);
 
   // 換槍兩段式：收槍（下壓翻轉）→ 到位換模型 → 舉槍
   if (me._swapT > 0){
@@ -1520,6 +1533,10 @@ function updateLocal(dt){
   lookDX = 0; lookDY = 0;
   vmSwayX += (swTX - vmSwayX)*Math.min(1, dt*7);
   vmSwayY += (swTY - vmSwayY)*Math.min(1, dt*7);
+  // 疾跑持槍姿勢：槍身斜收（開火/換彈/開鏡即刻回正）
+  const spTgt = (sprinting && slot.moving && me.onGround && me.reloading<=0 && me._swapT<=0
+                 && !me.zoomed && now()-(me._lastShot||0) > 0.35) ? 1 : 0;
+  vmSprint += (spTgt - vmSprint)*Math.min(1, dt*8);
   if (viewmodel){
     const mv = slot.moving ? (sprinting?1.5:1) : 0;
     // 換彈多段動畫：槍身收低左傾看彈匣井 → 退彈匣（實體掉落）→ 上新彈匣 → 拉槍機舉回
@@ -1533,12 +1550,15 @@ function updateLocal(dt){
         viewmodel.position.z = 0.06; }                     // 槍身短促後拉（走原有回彈衰減）
     }
     const hol = me._swapT;   // 換槍收槍
-    viewmodel.position.x = 0.22 + vmSwayX + mv*Math.sin(me.bobT)*0.009 - rl*0.05;
+    viewmodel.position.x = 0.22 + vmSwayX + mv*Math.sin(me.bobT)*0.009 - rl*0.05 + vmSprint*0.06;
     viewmodel.position.y = -0.2 + vmSwayY*0.6 - mv*Math.abs(Math.cos(me.bobT))*0.011
-                           - vmDraw*0.24 - hol*0.26 - rl*(0.1 + Math.sin(now()*6)*0.012);
-    viewmodel.rotation.y = 0.05 + rl*0.22 + hol*0.25;
-    viewmodel.rotation.z = -vmSwayX*1.7 - mv*Math.sin(me.bobT)*0.012 + rl*0.34;
-    viewmodel.rotation.x = 0.02 + vmSwayY*2.2 - vmDraw*1.0 - hol*1.1 - rl*0.5;
+                           - vmDraw*0.24 - hol*0.26 - rl*(0.1 + Math.sin(now()*6)*0.012)
+                           - vmSprint*0.07 + vmKick*0.012 + vmCast*0.03;
+    viewmodel.rotation.y = 0.05 + rl*0.22 + hol*0.25 + vmSprint*0.5;
+    viewmodel.rotation.z = -vmSwayX*1.7 - mv*Math.sin(me.bobT)*0.012 + rl*0.34
+                           + vmSprint*0.28 - vmCast*0.35;
+    viewmodel.rotation.x = 0.02 + vmSwayY*2.2 - vmDraw*1.0 - hol*1.1 - rl*0.5
+                           - vmSprint*0.35 + vmKick*0.06;
   }
 
   // 開火 / 換彈
@@ -1605,6 +1625,12 @@ function tryFire(){
   const spreadNow = currentSpread(g, gat); // 當下散佈（站定第一發＝0）
   me.recoil += (gat?0.006 : (g.dmg>60?0.035:0.012)) * (me.zoomed?0.4:1);
   me.spreadHeat = Math.min(1.6, me.spreadHeat + (gat?0.05:0.28));
+  // 開火動畫：槍模後座踢動、準星瞬間張開、彈藥數字跳動
+  me._lastShot = now();
+  vmKick = Math.min(1.2, vmKick + (gat?0.22 : g.dmg>60?0.9 : 0.5));
+  xhairKick = Math.min(9, xhairKick + (gat?1.2:3.5));
+  const amEl = $('ammo');
+  if (amEl){ amEl.classList.remove('pop'); void amEl.offsetWidth; amEl.classList.add('pop'); }
   sfx(g.pellets>1||g.dmg>60?'shot2':'shot', gat?.7:1);
   muzzleFlash();
   spawnCasing();
@@ -2133,6 +2159,7 @@ function localSkill(){
   const s = slots[myIdx];
   if (me.dead || (isHost && s.skillCd > 0)) return;
   if (s.fx.silence > 0){ centerMsg('技能被聲爆封鎖！'); sfx('click', .9); return; }
+  vmCast = 1; shakeCam(0.07);   // 施法甩槍動作
   if (isHost) s.skillCd = CHARS[s.char].skillCd;
   const dir = new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(me.pitch, me.yaw, 0, 'YXZ'));
   const data = {t:'skill', dir:[+dir.x.toFixed(3),+dir.y.toFixed(3),+dir.z.toFixed(3)],
@@ -2266,6 +2293,7 @@ function localUlt(){
   const s = slots[myIdx];
   if (me.dead || s.ult < 100) return;
   if (s.fx.silence > 0){ centerMsg('大招被聲爆封鎖！'); sfx('click', .9); return; }
+  vmCast = 1;   // 施法甩槍動作
   if (isHost) hostUseUlt(myIdx);
   else if (conns[0]) send(conns[0], {t:'ult'});
 }
@@ -2727,6 +2755,11 @@ function spawnEarthWall(id, x, z, ry){
   }
   scene.add(group);
   wallsLive.set(id, {group, meshes, colliders:cols, hp:320, dieAt:now()+20});
+  // 岩牆從地底隆起（帶破土塵霧）
+  group.position.y = -2.3;
+  addSpecial(.45, (dt2,k)=>{ group.position.y = -2.3*Math.pow(1-k, 3); }, ()=>{ group.position.y = 0; });
+  spawnSmoke(x, .3, z, {n:8, size:1.4, color:0xa08b62, rise:1.3, life:1.1, grow:1.1, opacity:.6, spread:1.8});
+  spawnDebris(x, .5, z, 0x8a6a3c, 5, {spd:5});
   sfx('boom', .35); shakeCam(0.16);
 }
 function spawnMiniWall(id, x, z, ry){ // 土彈擊地隆起的單塊岩掩體
@@ -2746,6 +2779,9 @@ function spawnMiniWall(id, x, z, ry){ // 土彈擊地隆起的單塊岩掩體
   const c = {x0:x-1.0, x1:x+1.0, y0:0, y1:h, z0:z-1.0, z1:z+1.0};
   colliders.push(c);
   wallsLive.set(id, {group, meshes:[m], colliders:[c], hp:140, dieAt:now()+12});
+  // 岩塊從地底隆起
+  group.position.y = -1.9;
+  addSpecial(.4, (dt2,k)=>{ group.position.y = -1.9*Math.pow(1-k, 3); }, ()=>{ group.position.y = 0; });
   spawnSmoke(x, .3, z, {n:6, size:1.2, color:0xa08b62, rise:1, life:1.2, grow:1, opacity:.6, spread:.8});
   spawnDebris(x, .8, z, 0x8a6a3c, 4, {spd:4});
   const d = camera ? camera.position.distanceTo(new THREE.Vector3(x,1,z)) : 99;
@@ -4435,6 +4471,9 @@ function updateAmmoUI(){
 function showHitmark(hs){
   const h = $('hitmark');
   h.style.opacity = 1;
+  // 命中標記彈縮：放大瞬間收回
+  h.style.transform = 'translate(-50%,-50%) rotate(45deg) scale(1.55)';
+  requestAnimationFrame(()=>{ h.style.transform = 'translate(-50%,-50%) rotate(45deg) scale(1)'; });
   h.querySelectorAll('span').forEach(s=> s.style.background = hs?'#ff5a4e':'#fff');
   if (hs) sfx('dink', .8);   // 爆頭「叮」
   clearTimeout(h._t); h._t = setTimeout(()=> h.style.opacity=0, 90);
@@ -4480,11 +4519,19 @@ function updateHUD(){
   const s = slots[myIdx];
   // 動態準星擴張：與實際散佈公式完全同步——準星縮到最小＝子彈必中中心點
   const spNow = currentSpread(GUNS[me.gun], s.fx.gat>0);
-  updateXhair(clamp(3.5 + spNow*380, 3.5, 26));
+  updateXhair(clamp(3.5 + spNow*380 + xhairKick, 3.5, 34));   // 開火瞬間準星踢張
   $('tRed').textContent = scores.red; $('tBlue').textContent = scores.blue;
   $('timer').textContent = fmtTime(matchT);
   $('hpfill').style.width = clamp(s.hp,0,100)+'%';
   $('hplabel').textContent = 'HP '+Math.max(0,Math.ceil(s.hp));
+  // 血條殘影：受傷時白條緩慢追上，一眼看出剛損多少血
+  const gh = $('hpghost');
+  if (gh){
+    let gv = updateHUD._ghost ?? s.hp;
+    gv = s.hp >= gv ? s.hp : Math.max(s.hp, gv - 0.9);
+    updateHUD._ghost = gv;
+    gh.style.width = clamp(gv,0,100)+'%';
+  }
   $('ultfill').style.width = clamp(s.ult,0,100)+'%';
   const cs = $('chipSkill');
   const cd = isHost ? s.skillCd : localSkillCd;
@@ -4813,6 +4860,14 @@ function frame(){
     a.walk += dt * (s.moving?9:0);
     const sw = s.moving ? Math.sin(a.walk)*0.55 : 0;
     a.legL.rotation.x = sw; a.legR.rotation.x = -sw;
+    // 步伐彈跳＋移動前傾；中彈踉蹌後仰＋頭部晃動
+    const bobY = s.moving ? Math.abs(Math.sin(a.walk))*0.05 : 0;
+    a.group.position.y = s.pos.y + bobY;
+    if (a._php !== undefined && s.hp < a._php - 1) a._flinch = now();
+    a._php = s.hp;
+    const fl = Math.max(0, 1 - (now()-(a._flinch ?? -9))/0.3);
+    a.group.rotation.x = (s.moving ? 0.07 : 0) - fl*0.2;
+    a.head.rotation.z = fl > 0 ? fl*0.25*Math.sin(now()*35) : 0;
     a.gunM.scale.z = [0.55,0.85,1,1.15,1.5][s.gun] || 1;   // 依武器調整槍長
     // 狀態光環
     if (s.fx.shield>0){

@@ -87,7 +87,8 @@
   #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
   #xhair{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:26px;height:26px}
   #xhair span{position:absolute;background:#dff1ff;box-shadow:0 0 4px rgba(0,0,0,.9)}
-  #hitmark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(45deg);width:26px;height:26px;opacity:0}
+  #hitmark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(45deg);width:26px;height:26px;opacity:0;
+    transition:transform .1s ease-out}
   #hitmark span{position:absolute;background:#fff;box-shadow:0 0 6px #ff5a4e}
   #hitmark span:nth-child(1){left:0;top:0;width:9px;height:2.5px}
   #hitmark span:nth-child(2){right:0;top:0;width:9px;height:2.5px}
@@ -120,6 +121,9 @@
   @keyframes pulse{50%{box-shadow:0 0 22px rgba(232,121,249,.85)}}
   #br{position:absolute;right:18px;bottom:16px;text-align:right}
   #ammo{font-size:34px;font-weight:900;color:#fff;text-shadow:0 2px 8px #000;font-variant-numeric:tabular-nums}
+  #ammo.pop{animation:ammopop .12s ease}
+  @keyframes ammopop{from{transform:scale(1.28)}to{transform:scale(1)}}
+  #hpghost{position:absolute;left:0;top:0;bottom:0;background:rgba(255,236,200,.55)}
   #ammo small{font-size:16px;color:#93a7c4}
   #gunname{font-size:13px;color:#b8c6dc;letter-spacing:.15em;margin-top:2px}
   #elemtag{font-size:12px;letter-spacing:.1em;margin-top:4px}
@@ -302,7 +306,7 @@
   <div id="centerMsg"></div>
   <div id="killCf"><div class="sk">☠</div><div class="pt"></div></div>
   <div id="bl">
-    <div class="barwrap"><div class="barfill" id="hpfill" style="width:100%"></div><div class="barlabel" id="hplabel">HP 100</div></div>
+    <div class="barwrap"><div id="hpghost" style="width:100%"></div><div class="barfill" id="hpfill" style="width:100%;position:relative"></div><div class="barlabel" id="hplabel">HP 100</div></div>
     <div class="barwrap"><div class="barfill" id="ultfill" style="width:0%"></div><div class="barlabel">絕技能量</div></div>
     <div id="chips">
       <div class="chip" id="chipSkill">E · 技能</div>
