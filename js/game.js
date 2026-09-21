@@ -56,18 +56,18 @@ const GUNS = [
 ];
 const GUN_COUNT = 5;   // 玩家可持有的槍數（不含大招砲）
 
-/* 十位角色（與屬性分開選）：外觀識別＋各自的輕量被動 */
+/* 十位角色（與屬性分開選）：主被動＋擊殺/情境觸發的第二被動 */
 const HEROES = [
-  { name:'燼',   title:'突擊尖兵', desc:'移動速度 +7%',            icon:'⚡', speed:.07,   helm:0x2e3440, accent:0xff7a45 },
-  { name:'磐石', title:'重裝壁壘', desc:'受到傷害 −10%',           icon:'🛡️', tanky:.10,   helm:0x3d4a3a, accent:0x8fbf6a },
-  { name:'鷹眼', title:'神射手',   desc:'爆頭傷害 +18%',           icon:'🎯', hsBonus:.18, helm:0x27313f, accent:0x4ea1ff },
-  { name:'白芷', title:'戰地醫官', desc:'每秒回復 1.2 生命',       icon:'✚',  regen:1.2,   helm:0xdfe4ea, accent:0xff5a6e },
-  { name:'雷管', title:'爆破工兵', desc:'手雷攜帶量 +1',           icon:'💣', nades:1,     helm:0x5a4a2e, accent:0xffc94a },
-  { name:'影歌', title:'暗巷刺客', desc:'背後攻擊 +20% 傷害',      icon:'🗡️', backstab:.2, helm:0x241c33, accent:0xa06bff },
-  { name:'蠻牛', title:'近戰鬥士', desc:'8m 內傷害 +12%',          icon:'🔥', close:.12,   helm:0x4a2c26, accent:0xff5a3c },
-  { name:'守望', title:'哨衛',     desc:'技能冷卻 −15%',           icon:'⏱️', cdr:.15,     helm:0x2c4a4a, accent:0x3dd6c3 },
-  { name:'宗師', title:'絕技宗師', desc:'大招充能速度 +15%',       icon:'★',  ultRate:.15, helm:0x3a3050, accent:0xe879f9 },
-  { name:'福星', title:'幸運傭兵', desc:'8% 機率 1.5 倍暴擊',      icon:'♠',  crit:.08,    helm:0x50432a, accent:0xffe36b },
+  { name:'燼',   title:'突擊尖兵', desc:'移速 +12%；擊殺後疾速 2.5 秒',            icon:'⚡', speed:.12, killHaste:2.5, helm:0x2e3440, accent:0xff7a45 },
+  { name:'磐石', title:'重裝壁壘', desc:'受傷 −15%；血量低於 35 再減 15%',         icon:'🛡️', tanky:.15, lastStand:.15, helm:0x3d4a3a, accent:0x8fbf6a },
+  { name:'鷹眼', title:'神射手',   desc:'爆頭傷害 +30%，且爆頭無距離衰減',         icon:'🎯', hsBonus:.30, hsNoFalloff:true, helm:0x27313f, accent:0x4ea1ff },
+  { name:'白芷', title:'戰地醫官', desc:'每秒回復 2.5；擊殺立即回復 20',           icon:'✚',  regen:2.5, killHeal:20, helm:0xdfe4ea, accent:0xff5a6e },
+  { name:'雷管', title:'爆破工兵', desc:'手雷 +2 顆，威力與範圍 +25%',             icon:'💣', nades:2, nadeBoost:.25, helm:0x5a4a2e, accent:0xffc94a },
+  { name:'影歌', title:'暗巷刺客', desc:'背刺 +35%；擊殺後隱身 1.5 秒',            icon:'🗡️', backstab:.35, killStealth:1.5, helm:0x241c33, accent:0xa06bff },
+  { name:'蠻牛', title:'近戰鬥士', desc:'8m 內傷害 +25%、受傷 −10%',               icon:'🔥', close:.25, closeDef:.10, helm:0x4a2c26, accent:0xff5a3c },
+  { name:'守望', title:'哨衛',     desc:'技能冷卻 −30%',                            icon:'⏱️', cdr:.30,   helm:0x2c4a4a, accent:0x3dd6c3 },
+  { name:'宗師', title:'絕技宗師', desc:'大招充能 +30%，開戰/施放後自帶 20%',      icon:'★',  ultRate:.30, ultStart:20, helm:0x3a3050, accent:0xe879f9 },
+  { name:'福星', title:'幸運傭兵', desc:'15% 機率 1.8 倍暴擊',                     icon:'♠',  crit:.15, critX:1.8, helm:0x50432a, accent:0xffe36b },
 ];
 /* 槍皮（個人外觀，全端同步）：各有專屬造型件與動態特效，不只是換色 */
 const SKINS = [
@@ -2729,12 +2729,14 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
   const aH = HEROES[att.hero||0] || HEROES[0], vH = HEROES[vic.hero||0] || HEROES[0];   // 角色被動
   let dmg = g.dmg;
   const falloff = clamp(1 - Math.max(0, dist-g.range)/g.range, 0.35, 1);
-  dmg *= falloff;
+  if (!(part==='head' && aH.hsNoFalloff)) dmg *= falloff;  // 鷹眼：爆頭無距離衰減
   if (part==='head') dmg *= g.hs * (1 + (aH.hsBonus||0));  // 鷹眼：爆頭加成
   dmg *= elemMult(aEl, vEl);
   if (gameMode==='hs' && part!=='head') dmg *= 0.15;       // 爆頭對決：身體傷害大幅衰減
-  if (aH.crit && Math.random() < aH.crit) dmg *= 1.5;      // 福星：機率暴擊
+  if (aH.crit && Math.random() < aH.crit) dmg *= aH.critX||1.5;  // 福星：機率暴擊
   if (aH.close && dist < 8) dmg *= 1 + aH.close;           // 蠻牛：近距加成
+  if (vH.closeDef && dist < 8) dmg *= 1 - vH.closeDef;     // 蠻牛：近身悍勇減傷
+  if (vH.lastStand && vic.hp < 35) dmg *= 1 - vH.lastStand;// 磐石：絕境減傷
   if (aH.backstab){                                         // 影歌：背刺加成
     const ap = att.idx===myIdx ? me.pos : att.pos;
     const vp0 = vic.idx===myIdx ? me.pos : vic.pos;
@@ -2851,6 +2853,10 @@ function hostKill(vic, att, hs, cause){
     att.score += pts;
     scores[att.team]++;
     addUlt(att, 22);
+    const kH = HEROES[att.hero||0] || {};        // 角色擊殺被動
+    if (kH.killHaste && att.alive) att.fx.haste = Math.max(att.fx.haste, kH.killHaste);   // 燼：擊殺疾速
+    if (kH.killHeal && att.alive) hostHeal(att, kH.killHeal);                              // 白芷：擊殺回復
+    if (kH.killStealth && att.alive) att.fx.stealth = Math.max(att.fx.stealth, kH.killStealth); // 影歌：擊殺隱身
   }
   const ev = {t:'ev', k:'kill', a:att?att.idx:-1, v:vic.idx, hs:!!hs, pts, cause,
               st: att?att.streak:0};
@@ -3084,7 +3090,7 @@ function localUlt(){
 function hostUseUlt(idx){
   const s = slots[idx]; if(!s || !s.alive || s.ult<100) return;
   if (s.fx.silence > 0) return;   // 音大招：技能封鎖
-  s.ult = 0;
+  s.ult = (HEROES[s.hero||0]||{}).ultStart||0;   // 宗師：施放後保留起始充能
   const el = CHARS[s.char].el;
   const ev = {t:'ev', k:'ult', i:idx, el, p:[+s.pos.x.toFixed(1),+s.pos.y.toFixed(1),+s.pos.z.toFixed(1)]};
   const foes = slots.filter(o=> o.ctrl!=='empty' && o.alive && o.team!==s.team);
@@ -3961,16 +3967,17 @@ function localThrowNade(){
 function hostNadeBoom(srcIdx, x, y, z){
   const s = slots[srcIdx]; if(!s) return;
   const el = CHARS[s.char].el;
+  const nb = 1 + ((HEROES[s.hero||0]||{}).nadeBoost||0);   // 雷管：手雷威力與範圍加成
   for (const o of slots){
     if (o.ctrl==='empty' || !o.alive) continue;
     const p = o.idx===myIdx ? me.pos : o.pos;
     const d = Math.hypot(p.x-x, p.z-z);
-    if (d > 7) continue;
+    if (d > 7*Math.sqrt(nb)) continue;
     if (o.team === s.team){
-      if (el==='light') hostHeal(o, 35*(1-d/9));   // 光雷：友方範圍治療
+      if (el==='light') hostHeal(o, 35*nb*(1-d/9));   // 光雷：友方範圍治療
       continue;
     }
-    const dmg = (el==='light'?42:58)*(1-d/9)*elemMult(el, CHARS[o.char].el);
+    const dmg = (el==='light'?42:58)*nb*Math.max(1-d/9, .12)*elemMult(el, CHARS[o.char].el);
     if (el==='fire'){ o.fx.burn = Math.max(o.fx.burn, 2.5); o.fx.burnSrc = srcIdx; }
     else if (el==='water'){ o.fx.slow = Math.max(o.fx.slow, 3); }
     else if (el==='ice'){ o.fx.slow = Math.max(o.fx.slow, 3); o.fx.frz = Math.min(o.fx.frz+2, 2); o.fx.frzT = 4; }
@@ -5047,6 +5054,7 @@ function hostTick(dt){
         if (s.idx===myIdx) applyMyChar();
       }
       if (gameMode==='sniper') s.gun = 4;
+      if (hb.ultStart) s.ult = Math.max(s.ult, hb.ultStart);   // 宗師：重生充能保底
       updateHpBar(s);
       if (s.idx===myIdx){ respawnLocal(); }
       if (s.ctrl==='bot') s.bot = null;
@@ -5172,6 +5180,7 @@ function startMatch(){
     s.hp = 100; s.alive = true;
     s.pos.copy(spawnPoint(s.team));
     if (gameMode==='sniper') s.gun = 4;   // 狙神競賽：全員鎖狙擊槍
+    if (netMode!=='guest') s.ult = Math.max(s.ult||0, (HEROES[s.hero||0]||{}).ultStart||0);   // 宗師：開戰自帶充能
     if (s.idx !== myIdx) makeAvatar(s);
   }
   if (gameMode==='sniper') me.gun = 4;
