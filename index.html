@@ -144,6 +144,13 @@
     background:radial-gradient(ellipse at center,rgba(103,232,249,.06) 30%,rgba(30,120,150,.28) 100%);
     box-shadow:inset 0 0 120px rgba(103,232,249,.5)}
 
+  /* Valorant 式斜角面板：HUD 元件切角、直線利落 */
+  #topbar,.barwrap{clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px);border-radius:0}
+  .chip,.kf{clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px);border-radius:0}
+  #hpfill{background:linear-gradient(90deg,#ff4655,#ff7a45)}
+  #ultfill{background:linear-gradient(90deg,#3dd6c3,#8be9d9)}
+  .chip.ready{border-color:#3dd6c3;box-shadow:0 0 10px rgba(61,214,195,.35)}
+
   /* ===== 計分板 ===== */
   #board{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:15;
     background:rgba(8,11,17,.92);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:22px 28px;min-width:min(620px,94vw);backdrop-filter:blur(8px)}

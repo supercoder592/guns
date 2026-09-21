@@ -607,34 +607,31 @@ function noiseOver(ctx,w,h,alpha,n=900){
 }
 const TEX = {};
 function buildTextures(){
+  // Valorant 式手繪地面：乾淨大石板＋柔和冷暖色斑＋收斂的細節
   TEX.ground = makeCanvasTex((c,w,h)=>{
-    c.fillStyle='#6e6a62'; c.fillRect(0,0,w,h);
-    // 大面積色斑（柏油/沙土混合感）
-    for(let i=0;i<70;i++){
-      c.fillStyle=`hsla(${rand(30,45)},${rand(8,16)}%,${rand(36,46)}%,${rand(.15,.4)})`;
-      c.beginPath(); c.ellipse(Math.random()*w,Math.random()*h,rand(16,90),rand(12,64),Math.random()*3,0,7); c.fill();
+    c.fillStyle='#84898f'; c.fillRect(0,0,w,h);
+    for(let i=0;i<26;i++){   // 大面積柔和冷暖變化（手繪筆觸感）
+      c.fillStyle=`hsla(${Math.random()<.5?rand(196,216):rand(32,44)},${rand(10,18)}%,${rand(50,60)}%,${rand(.08,.18)})`;
+      c.beginPath(); c.ellipse(Math.random()*w,Math.random()*h,rand(60,160),rand(40,120),Math.random()*3,0,7); c.fill();
     }
-    // 油漬（深色不規則斑）
-    for(let i=0;i<7;i++){
-      c.fillStyle=`rgba(28,26,24,${rand(.18,.38)})`;
-      const x=Math.random()*w, y=Math.random()*h;
-      for(let j=0;j<4;j++){ c.beginPath(); c.ellipse(x+rand(-16,16), y+rand(-12,12), rand(8,26), rand(6,18), Math.random()*3, 0, 7); c.fill(); }
+    // 大石板分割線：刻線＋受光邊（乾淨的圖形感）
+    const tile = 128;
+    for(let y=0;y<=h;y+=tile){
+      c.fillStyle='rgba(42,46,52,.5)';    c.fillRect(0,y,w,2);
+      c.fillStyle='rgba(255,255,255,.15)'; c.fillRect(0,y+2,w,1.5);
     }
-    // 裂縫（多段折線＋分岔）
-    c.strokeStyle='rgba(38,35,30,0.55)';
-    for(let i=0;i<10;i++){
-      c.lineWidth = rand(1,2.2);
-      let x=Math.random()*w, y=Math.random()*h;
-      c.beginPath(); c.moveTo(x,y);
-      const segs = 4+Math.floor(Math.random()*5);
-      for(let j=0;j<segs;j++){ x+=rand(-36,36); y+=rand(-28,28); c.lineTo(x,y);
-        if (Math.random()<.3){ c.moveTo(x,y); c.lineTo(x+rand(-18,18), y+rand(-14,14)); c.moveTo(x,y); } }
-      c.stroke();
+    for(let x=0;x<=w;x+=tile){
+      c.fillStyle='rgba(42,46,52,.5)';    c.fillRect(x,0,2,h);
+      c.fillStyle='rgba(255,255,255,.15)'; c.fillRect(x+2,0,1.5,h);
     }
-    noiseOver(c,w,h,0.08,5200);
-    c.strokeStyle='rgba(45,42,38,0.35)'; c.lineWidth=2;
-    c.strokeRect(1,1,w-2,h-2);
-  }, 512, 512, 26);
+    // 少量收斂的細裂縫與淡漬
+    c.strokeStyle='rgba(54,58,62,.4)'; c.lineWidth=1.2;
+    for(let i=0;i<5;i++){ let x=Math.random()*w,y=Math.random()*h; c.beginPath(); c.moveTo(x,y);
+      for(let j=0;j<4;j++){ x+=rand(-30,30); y+=rand(-24,24); c.lineTo(x,y); } c.stroke(); }
+    for(let i=0;i<4;i++){ c.fillStyle=`rgba(52,54,58,${rand(.1,.2)})`;
+      c.beginPath(); c.ellipse(Math.random()*w,Math.random()*h,rand(14,34),rand(10,22),Math.random()*3,0,7); c.fill(); }
+    noiseOver(c,w,h,0.035,2200);
+  }, 512, 512, 13);
   // 地面粗糙度變化圖（局部微光澤，配合環境反射）
   {
     const cv = document.createElement('canvas'); cv.width=cv.height=256;
@@ -648,23 +645,38 @@ function buildTextures(){
     TEX.groundRough.wrapS = TEX.groundRough.wrapT = THREE.RepeatWrapping;
     TEX.groundRough.repeat.set(26,26);
   }
+  // 手繪水泥：柔和漸層＋淡色斑＋乾淨分板線
   TEX.concrete = makeCanvasTex((c,w,h)=>{
-    c.fillStyle='#8b8880'; c.fillRect(0,0,w,h);
-    noiseOver(c,w,h,0.12,2000);
-    c.fillStyle='rgba(60,58,54,0.25)';
-    for(let i=0;i<8;i++) c.fillRect(0, i*h/8, w, 2);
+    const g=c.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,'#a8aaac'); g.addColorStop(1,'#8e9094');
+    c.fillStyle=g; c.fillRect(0,0,w,h);
+    for(let i=0;i<8;i++){
+      c.fillStyle=`hsla(${rand(200,220)},${rand(4,10)}%,${rand(58,68)}%,${rand(.1,.2)})`;
+      c.beginPath(); c.ellipse(Math.random()*w,Math.random()*h,rand(30,90),rand(20,50),Math.random()*3,0,7); c.fill();
+    }
+    c.fillStyle='rgba(60,62,66,.35)';
+    for(let i=0;i<4;i++) c.fillRect(0, i*h/4, w, 2);
+    c.fillStyle='rgba(255,255,255,.16)';
+    for(let i=0;i<4;i++) c.fillRect(0, i*h/4+2, w, 1.5);
+    noiseOver(c,w,h,0.03,500);
   }, 256, 256, 4);
+  // 手繪紅磚：大磚低對比、上緣受光下緣落影（圖形化立體感）
   TEX.brick = makeCanvasTex((c,w,h)=>{
-    c.fillStyle='#7d5a48'; c.fillRect(0,0,w,h);
-    const bw=42, bh=20;
+    c.fillStyle='#c8b49a'; c.fillRect(0,0,w,h);   // 淺色勾縫
+    const bw=64, bh=28;
     for(let y=0;y<h/bh;y++){
       for(let x=-1;x<w/bw+1;x++){
-        const off = (y%2)*bw/2;
-        c.fillStyle = `hsl(${rand(12,22)},${rand(30,42)}%,${rand(40,52)}%)`;
-        c.fillRect(x*bw+off+1, y*bh+1, bw-2, bh-2);
+        const off=(y%2)*bw/2;
+        const hue=rand(14,24), sat=rand(38,50), li=rand(48,58);
+        c.fillStyle=`hsl(${hue},${sat}%,${li}%)`;
+        c.fillRect(x*bw+off+2, y*bh+2, bw-4, bh-4);
+        c.fillStyle=`hsla(${hue},${sat}%,${li+14}%,.55)`;
+        c.fillRect(x*bw+off+2, y*bh+2, bw-4, 3);
+        c.fillStyle=`hsla(${hue},${sat+4}%,${li-16}%,.4)`;
+        c.fillRect(x*bw+off+2, y*bh+bh-6, bw-4, 3);
       }
     }
-    noiseOver(c,w,h,0.08,1200);
+    noiseOver(c,w,h,0.035,600);
   }, 256, 256, 3);
   TEX.metal = makeCanvasTex((c,w,h)=>{
     c.fillStyle='#4d5a63'; c.fillRect(0,0,w,h);
@@ -677,29 +689,45 @@ function buildTextures(){
     c.fillStyle='rgba(140,80,40,0.16)';
     for(let i=0;i<10;i++) c.fillRect(Math.random()*w, Math.random()*h, rand(6,26), rand(3,10));
   }, 256, 256, 1);
+  // 手繪木箱：暖色飽和木板、板上緣高光
   TEX.wood = makeCanvasTex((c,w,h)=>{
-    c.fillStyle='#8a6a3c'; c.fillRect(0,0,w,h);
+    c.fillStyle='#a97b45'; c.fillRect(0,0,w,h);
     for(let y=0;y<h;y+=32){
-      c.fillStyle=`hsl(${rand(28,36)},${rand(34,44)}%,${rand(34,44)}%)`;
+      const li = rand(44,54);
+      c.fillStyle=`hsl(${rand(30,38)},${rand(42,52)}%,${li}%)`;
       c.fillRect(0,y,w,30);
-      c.strokeStyle='rgba(50,32,12,0.5)'; c.strokeRect(0,y,w,30);
+      c.fillStyle=`hsla(34,50%,${li+16}%,.5)`; c.fillRect(0,y,w,3);
+      c.fillStyle='rgba(70,46,20,.5)'; c.fillRect(0,y+28,w,2);
     }
-    c.strokeStyle='rgba(60,40,16,0.8)'; c.lineWidth=6; c.strokeRect(3,3,w-6,h-6);
-    c.beginPath(); c.moveTo(0,0); c.lineTo(w,h); c.moveTo(w,0); c.lineTo(0,h); c.lineWidth=5; c.stroke();
-    noiseOver(c,w,h,0.06,600);
+    c.strokeStyle='rgba(84,56,24,.85)'; c.lineWidth=6; c.strokeRect(3,3,w-6,h-6);
+    c.strokeStyle='rgba(84,56,24,.6)'; c.lineWidth=5;
+    c.beginPath(); c.moveTo(0,0); c.lineTo(w,h); c.moveTo(w,0); c.lineTo(0,h); c.stroke();
+    noiseOver(c,w,h,0.03,400);
   }, 256, 256, 1);
+  // 手繪灰泥牆：奶油暖色由上而下漸層、頂部受光邊、底部踢腳暗帶
   TEX.plaster = makeCanvasTex((c,w,h)=>{
-    c.fillStyle='#a89f8d'; c.fillRect(0,0,w,h);
-    noiseOver(c,w,h,0.09,1600);
-    c.fillStyle='rgba(70,64,54,0.18)';
-    for(let i=0;i<5;i++){ c.beginPath(); c.arc(Math.random()*w,Math.random()*h,rand(8,30),0,7); c.fill(); }
+    const g = c.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,'#e6dcc4'); g.addColorStop(.75,'#d9cbae'); g.addColorStop(1,'#c4b393');
+    c.fillStyle=g; c.fillRect(0,0,w,h);
+    for(let i=0;i<10;i++){
+      c.fillStyle=`hsla(${rand(36,48)},${rand(18,30)}%,${rand(68,80)}%,${rand(.1,.22)})`;
+      c.beginPath(); c.ellipse(Math.random()*w,Math.random()*h,rand(30,80),rand(20,60),Math.random()*3,0,7); c.fill();
+    }
+    c.fillStyle='rgba(90,76,58,.35)'; c.fillRect(0,h-14,w,14);
+    c.fillStyle='rgba(255,255,255,.2)'; c.fillRect(0,0,w,3);
+    noiseOver(c,w,h,0.03,700);
   }, 256, 256, 2);
+  // 手繪砂岩：暖色大面塊
   TEX.rock = makeCanvasTex((c,w,h)=>{
-    c.fillStyle='#7a6647'; c.fillRect(0,0,w,h);
-    noiseOver(c,w,h,0.16,2200);
-    c.strokeStyle='rgba(40,32,20,0.6)'; c.lineWidth=2;
-    for(let i=0;i<12;i++){ c.beginPath(); c.moveTo(Math.random()*w,Math.random()*h);
+    c.fillStyle='#a08055'; c.fillRect(0,0,w,h);
+    for(let i=0;i<9;i++){
+      c.fillStyle=`hsla(${rand(30,40)},${rand(24,34)}%,${rand(48,62)}%,${rand(.2,.4)})`;
+      c.beginPath(); c.ellipse(Math.random()*w,Math.random()*h,rand(24,70),rand(18,44),Math.random()*3,0,7); c.fill();
+    }
+    c.strokeStyle='rgba(72,54,30,.55)'; c.lineWidth=2;
+    for(let i=0;i<8;i++){ c.beginPath(); c.moveTo(Math.random()*w,Math.random()*h);
       c.lineTo(Math.random()*w,Math.random()*h); c.stroke(); }
+    noiseOver(c,w,h,0.05,900);
   }, 256, 256, 1);
   TEX.camoR = camoTex('#7a3b32','#8f5a3a','#5c2e28','#3f2320');
   TEX.camoB = camoTex('#31506e','#3d6484','#26374b','#1d2c3c');
@@ -782,6 +810,81 @@ function camoTex(a,b,cc,d){
   },256,256,1);
 }
 
+/* ---------- 後製管線（Valorant 式畫面質感：Bloom ＋ 飽和對比調色 ＋ 暗角） ---------- */
+let POST = null;
+function buildPost(){
+  try{
+    const w = Math.max(4, renderer.domElement.width), h = Math.max(4, renderer.domElement.height);
+    const bw = Math.max(4, w>>2), bh = Math.max(4, h>>2);
+    const old = POST; POST = null;
+    if (old){ old.sceneRT.dispose(); old.bright.dispose(); old.blurA.dispose(); }
+    const P = {};
+    P.sceneRT = new THREE.WebGLRenderTarget(w, h, {samples: IS_TOUCH ? 2 : 4});   // 行動裝置降 MSAA 保效能
+    P.bright  = new THREE.WebGLRenderTarget(bw, bh);
+    P.blurA   = new THREE.WebGLRenderTarget(bw, bh);
+    P.cam = new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+    const VERT = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }';
+    const mkPass = (frag, uniforms)=>{
+      const mat = new THREE.ShaderMaterial({uniforms, vertexShader:VERT, fragmentShader:frag,
+        depthTest:false, depthWrite:false});
+      const sc = new THREE.Scene();
+      sc.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2), mat));
+      return {sc, mat};
+    };
+    // 亮部萃取（供 bloom）
+    P.pBright = mkPass(`varying vec2 vUv; uniform sampler2D tSrc;
+      void main(){
+        vec3 c = texture2D(tSrc, vUv).rgb;
+        float l = dot(c, vec3(.299,.587,.114));
+        gl_FragColor = vec4(c * smoothstep(.68, 1.05, l), 1.);
+      }`, {tSrc:{value:null}});
+    // 分離高斯模糊
+    P.pBlur = mkPass(`varying vec2 vUv; uniform sampler2D tSrc; uniform vec2 dir;
+      void main(){
+        vec3 a = texture2D(tSrc, vUv).rgb * .227;
+        vec2 o1 = dir*1.5, o2 = dir*3.0, o3 = dir*4.5, o4 = dir*6.0;
+        a += (texture2D(tSrc, vUv+o1).rgb + texture2D(tSrc, vUv-o1).rgb) * .194;
+        a += (texture2D(tSrc, vUv+o2).rgb + texture2D(tSrc, vUv-o2).rgb) * .121;
+        a += (texture2D(tSrc, vUv+o3).rgb + texture2D(tSrc, vUv-o3).rgb) * .054;
+        a += (texture2D(tSrc, vUv+o4).rgb + texture2D(tSrc, vUv-o4).rgb) * .016;
+        gl_FragColor = vec4(a, 1.);
+      }`, {tSrc:{value:null}, dir:{value:new THREE.Vector2()}});
+    // 合成：bloom 疊加 → 提飽和 → 對比 S 曲線 → 暗角
+    P.pFinal = mkPass(`varying vec2 vUv; uniform sampler2D tSrc; uniform sampler2D tBloom;
+      void main(){
+        vec3 c = texture2D(tSrc, vUv).rgb + texture2D(tBloom, vUv).rgb * .8;
+        float l = dot(c, vec3(.299,.587,.114));
+        c = mix(vec3(l), c, 1.16);
+        c = (c - .5) * 1.07 + .512;
+        float d = distance(vUv, vec2(.5));
+        c *= 1. - smoothstep(.58, 1.02, d) * .34;
+        gl_FragColor = vec4(c, 1.);
+        #include <colorspace_fragment>
+      }`, {tSrc:{value:null}, tBloom:{value:null}});
+    POST = P;
+  }catch(e){ POST = null; }
+}
+function renderFrame(){
+  if (!POST){ renderer.render(scene, camera); return; }
+  renderer.setRenderTarget(POST.sceneRT);
+  renderer.render(scene, camera);
+  POST.pBright.mat.uniforms.tSrc.value = POST.sceneRT.texture;
+  renderer.setRenderTarget(POST.bright);
+  renderer.render(POST.pBright.sc, POST.cam);
+  POST.pBlur.mat.uniforms.tSrc.value = POST.bright.texture;
+  POST.pBlur.mat.uniforms.dir.value.set(1/POST.bright.width, 0);
+  renderer.setRenderTarget(POST.blurA);
+  renderer.render(POST.pBlur.sc, POST.cam);
+  POST.pBlur.mat.uniforms.tSrc.value = POST.blurA.texture;
+  POST.pBlur.mat.uniforms.dir.value.set(0, 1/POST.bright.height);
+  renderer.setRenderTarget(POST.bright);
+  renderer.render(POST.pBlur.sc, POST.cam);
+  POST.pFinal.mat.uniforms.tSrc.value = POST.sceneRT.texture;
+  POST.pFinal.mat.uniforms.tBloom.value = POST.bright.texture;
+  renderer.setRenderTarget(null);
+  renderer.render(POST.pFinal.sc, POST.cam);
+}
+
 function addCollider(x,z,w,d,h,y=0){ colliders.push({x0:x-w/2,x1:x+w/2,y0:y,y1:y+h,z0:z-d/2,z1:z+d/2}); }
 function box(w,h,d, mat, x,y,z, shootable=true, collide=true, castShadow=true){
   const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
@@ -801,11 +904,11 @@ function buildWorld(){
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.0;   // 後製調色接手亮度
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9fb2c4);
-  scene.fog = new THREE.Fog(0x9fb2c4, 70, 240);
+  scene.background = new THREE.Color(0xaec6dd);
+  scene.fog = new THREE.Fog(0xaec6dd, 85, 270);   // 更輕更遠的霧：畫面乾淨明亮
 
   camera = new THREE.PerspectiveCamera(74, innerWidth/innerHeight, 0.08, 500);
 
@@ -825,21 +928,23 @@ function buildWorld(){
     eq.dispose(); pmrem.dispose();
   }
 
-  const hemi = new THREE.HemisphereLight(0xcfe0ee, 0x6b675e, 0.72);
+  // Valorant 式光照：明亮均勻、陰影柔和不死黑
+  const hemi = new THREE.HemisphereLight(0xd6e9f8, 0x8d8574, 0.88);
   scene.add(hemi);
-  sunLight = new THREE.DirectionalLight(0xfff2dd, 2.1);
+  sunLight = new THREE.DirectionalLight(0xfff0d2, 1.95);
   sunLight.position.set(55, 90, 30);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.set(2048, 2048);
   const sc = sunLight.shadow.camera;
   sc.left=-80; sc.right=80; sc.top=80; sc.bottom=-80; sc.far=250;
   sunLight.shadow.bias = -0.0005;
+  sunLight.shadow.radius = 5;   // 柔影
   scene.add(sunLight);
   // 反向補光（陰影面不至於死黑）
   const fill = new THREE.DirectionalLight(0xbccadd, 0.85);
   fill.position.set(-45, 55, -40);
   scene.add(fill);
-  scene.add(new THREE.AmbientLight(0x3a4048, 0.42));
+  scene.add(new THREE.AmbientLight(0x46505c, 0.48));
 
   buildTextures();
 
@@ -864,9 +969,9 @@ function buildWorld(){
   const bigConcTex = TEX.concrete.clone(); bigConcTex.repeat.set(26, 2); bigConcTex.needsUpdate = true;
   const matConcBig = new THREE.MeshStandardMaterial({map:bigConcTex, roughness:0.92});
   const matPlaster = new THREE.MeshStandardMaterial({map:TEX.plaster, roughness:0.9});
-  const matMetalR  = new THREE.MeshStandardMaterial({map:TEX.metal, roughness:0.6, metalness:0.2, color:0xb86b5c});
-  const matMetalG  = new THREE.MeshStandardMaterial({map:TEX.metal, roughness:0.6, metalness:0.2, color:0x6e8a6a});
-  const matMetalB  = new THREE.MeshStandardMaterial({map:TEX.metal, roughness:0.6, metalness:0.2, color:0x5d7a9a});
+  const matMetalR  = new THREE.MeshStandardMaterial({map:TEX.metal, roughness:0.6, metalness:0.2, color:0xc65a45});   // Valorant 式高彩貨櫃
+  const matMetalG  = new THREE.MeshStandardMaterial({map:TEX.metal, roughness:0.6, metalness:0.2, color:0x3f8f7a});
+  const matMetalB  = new THREE.MeshStandardMaterial({map:TEX.metal, roughness:0.6, metalness:0.2, color:0x4a7fb5});
   const matWood    = new THREE.MeshStandardMaterial({map:TEX.wood, roughness:0.85});
 
   // 外牆
@@ -875,6 +980,12 @@ function buildWorld(){
   box(2*B+4, WH, 2, matConcBig,  0, WH/2,  B);
   box(2, WH, 2*B+4, matConcBig, -B, WH/2, 0);
   box(2, WH, 2*B+4, matConcBig,  B, WH/2, 0);
+  // Valorant 式色彩腳本：外牆頂部一圈藍綠飾帶（乾淨的圖形化 trim）
+  const matTrim = new THREE.MeshStandardMaterial({color:0x2fb3a2, roughness:.5, emissive:0x0e4a44, emissiveIntensity:.35});
+  box(2*B+4, .35, 2.2, matTrim, 0, WH-0.15, -B, false, false, false);
+  box(2*B+4, .35, 2.2, matTrim, 0, WH-0.15,  B, false, false, false);
+  box(2.2, .35, 2*B+4, matTrim, -B, WH-0.15, 0, false, false, false);
+  box(2.2, .35, 2*B+4, matTrim,  B, WH-0.15, 0, false, false, false);
 
   /* ---- 牆段工具：沿軸建牆，gaps 可挖門洞（到地）或窗洞（1.05~2.0m） ---- */
   const wallRun = (axis, a0, a1, c, h, mat, gaps=[])=>{
@@ -1205,14 +1316,28 @@ function buildWorld(){
     }
   }
 
-  // 寫實天空：漸層天穹＋太陽
+  // Valorant 式手繪天空：鮮豔漸層＋積雲（亮頂平底）＋地平暖霾
   {
-    const cv = document.createElement('canvas'); cv.width=16; cv.height=256;
+    const cv = document.createElement('canvas'); cv.width=512; cv.height=256;
     const c = cv.getContext('2d');
     const g = c.createLinearGradient(0,0,0,256);
-    g.addColorStop(0,'#54789e'); g.addColorStop(.42,'#93accd');
-    g.addColorStop(.72,'#c8d2d4'); g.addColorStop(1,'#d8d2c2');
-    c.fillStyle = g; c.fillRect(0,0,16,256);
+    g.addColorStop(0,'#2f6cb2'); g.addColorStop(.3,'#5f9bd6');
+    g.addColorStop(.46,'#b9d6ea'); g.addColorStop(.52,'#f0e4c6'); g.addColorStop(1,'#e8d9b8');
+    c.fillStyle = g; c.fillRect(0,0,512,256);
+    const cloud = (cx,cy,s)=>{   // 手繪積雲：多球團簇＋平底陰影
+      c.fillStyle='rgba(170,192,216,.45)';
+      c.beginPath(); c.ellipse(cx, cy+s*.3, s*1.2, s*.18, 0, 0, 7); c.fill();
+      c.fillStyle='rgba(252,252,250,.92)';
+      for(let i=0;i<7;i++){
+        c.beginPath();
+        c.ellipse(cx+rand(-s,s), cy+rand(-s*.3,s*.1), rand(s*.35,s*.6), rand(s*.2,s*.34), 0, 0, 7);
+        c.fill();
+      }
+    };
+    for(let i=0;i<7;i++) cloud(rand(0,512), rand(58,104), rand(15,32));
+    const hz = c.createLinearGradient(0,108,0,140);   // 地平暖霾帶
+    hz.addColorStop(0,'rgba(244,230,196,0)'); hz.addColorStop(1,'rgba(244,230,196,.85)');
+    c.fillStyle=hz; c.fillRect(0,108,512,148);
     const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
     const sky = new THREE.Mesh(new THREE.SphereGeometry(340, 24, 16),
       new THREE.MeshBasicMaterial({map:t, side:THREE.BackSide, fog:false, depthWrite:false}));
@@ -1221,11 +1346,12 @@ function buildWorld(){
     scene.background = null;
     const sun = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color:0xfff2d0,
       transparent:true, blending:THREE.AdditiveBlending, fog:false, depthWrite:false}));
-    sun.scale.set(70,70,1);
+    sun.scale.set(92,92,1);
     sun.position.copy(sunLight.position).normalize().multiplyScalar(300);
     sun.renderOrder = -1;
     scene.add(sun);
   }
+  buildPost();   // 後製管線
 }
 function towerAt(x,z, mat, flagColor){
   box(4,5,4, mat, x, 2.5, z);
@@ -4790,6 +4916,7 @@ addEventListener('resize', ()=>{
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth/innerHeight;
   camera.updateProjectionMatrix();
+  buildPost();   // 後製 RT 跟隨新解析度重建
 });
 
 /* ------------------------- 主迴圈 ------------------------- */
@@ -4927,7 +5054,7 @@ function frame(){
   }
 
   updateHUD();
-  renderer.render(scene, camera);
+  renderFrame();   // 後製管線：Bloom＋調色＋暗角（不可用時自動退回直接渲染）
 }
 
 /* guest 使用的技能僅送請求；CD 顯示本地維護 */
