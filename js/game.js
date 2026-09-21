@@ -55,6 +55,39 @@ const GUNS = [
   { name:'萬刃殲滅砲', en:'MYRIAD GATLING', dmg:15, hs:1.6, mag:999, reload:0, rpm:1100, spread:0.035, auto:true, pellets:1, range:80, pierce:3 },
 ];
 const GUN_COUNT = 5;   // 玩家可持有的槍數（不含大招砲）
+
+/* 十位角色（與屬性分開選）：外觀識別＋各自的輕量被動 */
+const HEROES = [
+  { name:'燼',   title:'突擊尖兵', desc:'移動速度 +7%',            icon:'⚡', speed:.07,   helm:0x2e3440, accent:0xff7a45 },
+  { name:'磐石', title:'重裝壁壘', desc:'受到傷害 −10%',           icon:'🛡️', tanky:.10,   helm:0x3d4a3a, accent:0x8fbf6a },
+  { name:'鷹眼', title:'神射手',   desc:'爆頭傷害 +18%',           icon:'🎯', hsBonus:.18, helm:0x27313f, accent:0x4ea1ff },
+  { name:'白芷', title:'戰地醫官', desc:'每秒回復 1.2 生命',       icon:'✚',  regen:1.2,   helm:0xdfe4ea, accent:0xff5a6e },
+  { name:'雷管', title:'爆破工兵', desc:'手雷攜帶量 +1',           icon:'💣', nades:1,     helm:0x5a4a2e, accent:0xffc94a },
+  { name:'影歌', title:'暗巷刺客', desc:'背後攻擊 +20% 傷害',      icon:'🗡️', backstab:.2, helm:0x241c33, accent:0xa06bff },
+  { name:'蠻牛', title:'近戰鬥士', desc:'8m 內傷害 +12%',          icon:'🔥', close:.12,   helm:0x4a2c26, accent:0xff5a3c },
+  { name:'守望', title:'哨衛',     desc:'技能冷卻 −15%',           icon:'⏱️', cdr:.15,     helm:0x2c4a4a, accent:0x3dd6c3 },
+  { name:'宗師', title:'絕技宗師', desc:'大招充能速度 +15%',       icon:'★',  ultRate:.15, helm:0x3a3050, accent:0xe879f9 },
+  { name:'福星', title:'幸運傭兵', desc:'8% 機率 1.5 倍暴擊',      icon:'♠',  crit:.08,    helm:0x50432a, accent:0xffe36b },
+];
+/* 槍皮（個人外觀，全端同步顯示） */
+const SKINS = [
+  { name:'經典戰術', body:0x23272d, dark:0x363c45, steel:0x8b939c, wood:0,        glow:0 },
+  { name:'曜金',     body:0x3a3320, dark:0x6b5a26, steel:0xd9b64a, wood:0xc9a24a, glow:0xffd45e },
+  { name:'緋獄',     body:0x33161a, dark:0x5c2028, steel:0xc4485c, wood:0x8a2432, glow:0xff4655 },
+  { name:'寒霜',     body:0x1c2a38, dark:0x2e4a60, steel:0x9fd8f0, wood:0x5c7f9a, glow:0x9fd8f0 },
+  { name:'翡翠',     body:0x16302a, dark:0x1f4a3e, steel:0x4ec9a5, wood:0x2e6b54, glow:0x4ec9a5 },
+  { name:'夜紫',     body:0x241c33, dark:0x39284f, steel:0x9a6bff, wood:0x5a3d80, glow:0xa06bff },
+];
+/* 作戰模式（全部 5 分鐘內速戰速決） */
+const MODES = [
+  { id:'tdm',      name:'極速死鬥', min:5, desc:'5 分鐘團隊死鬥，擊殺多者勝' },
+  { id:'elim',     name:'一命殲滅', min:3, desc:'不重生！先殲滅敵隊全員者勝' },
+  { id:'hs',       name:'爆頭對決', min:5, desc:'只有爆頭有完整傷害（身體僅 15%）' },
+  { id:'roulette', name:'屬性輪盤', min:5, desc:'每次重生隨機更換屬性' },
+  { id:'sniper',   name:'狙神競賽', min:4, desc:'全員鎖定狙擊槍，一槍定勝負' },
+];
+let gameMode = 'tdm';
+const modeOf = id => MODES.find(m=>m.id===id) || MODES[0];
 const BOT_NAMES = ['哨兵‧甲','哨兵‧乙','哨兵‧丙','傀兵‧子','傀兵‧丑','傀兵‧寅','鐵衛‧壹','鐵衛‧貳',
                    '影衛‧參','影衛‧肆','狼哨‧卯','狼哨‧辰'];
 
@@ -199,7 +232,7 @@ function sfx(kind, vol=1){
 /* ctrl: 'local' | 'net' | 'bot' | 'empty' */
 function mkSlot(i){
   return {
-    idx:i, ctrl:'empty', peer:null, name:'', char:2, botChar:-1, pose:0, team: i<TEAM_SIZE?'red':'blue',
+    idx:i, ctrl:'empty', peer:null, name:'', char:2, hero:0, skin:0, botChar:-1, pose:0, team: i<TEAM_SIZE?'red':'blue',
     hp:100, alive:true, respawnAt:0,
     pos:new THREE.Vector3(), ry:0, rx:0, moving:false, gun:2,
     kills:0, deaths:0, score:0, streak:0, ult:0,
@@ -217,11 +250,37 @@ let started = false, matchT = MATCH_MINUTES*60, scores = {red:0, blue:0};
 
 /* ------------------------- 大廳 UI ------------------------- */
 let selChar = 2;
+let selHero = clamp(+(localStorage.getItem('wx_hero')||0)|0, 0, HEROES.length-1);
+let selSkin = clamp(+(localStorage.getItem('wx_skin')||0)|0, 0, SKINS.length-1);
+let selMode = MODES.some(m=>m.id===localStorage.getItem('wx_mode')) ? localStorage.getItem('wx_mode') : 'tdm';
 function pickChar(i){
   selChar = i;
   document.querySelectorAll('.cbtn').forEach(x=> x.classList.toggle('sel', +x.dataset.ci===i));
   if (netMode==='guest' && conns[0]) send(conns[0], {t:'char', c:i});   // 房間中即時換屬性
   if (netMode==='host'){ slots[myIdx].char = i; roomBroadcast(); }
+}
+function pickHero(i){
+  selHero = i;
+  try{ localStorage.setItem('wx_hero', i); }catch(e){}
+  document.querySelectorAll('.hbtn').forEach(x=> x.classList.toggle('sel', +x.dataset.hi===i));
+  const hd = $('heroDesc'); if (hd) hd.textContent = `${HEROES[i].name}‧${HEROES[i].title} — 被動：${HEROES[i].desc}`;
+  if (netMode==='guest' && conns[0]) send(conns[0], {t:'hero', h:i});
+  if (netMode==='host'){ slots[myIdx].hero = i; roomBroadcast(); }
+}
+function pickSkin(i){
+  selSkin = i;
+  try{ localStorage.setItem('wx_skin', i); }catch(e){}
+  document.querySelectorAll('.sbtn').forEach(x=> x.classList.toggle('sel', +x.dataset.si===i));
+  if (netMode==='guest' && conns[0]) send(conns[0], {t:'skin', k:i});
+  if (netMode==='host'){ slots[myIdx].skin = i; roomBroadcast(); }
+  if (started && slots[myIdx]){ slots[myIdx].skin = i; rebuildViewmodel(); }
+}
+function pickMode(id){
+  selMode = id;
+  try{ localStorage.setItem('wx_mode', id); }catch(e){}
+  document.querySelectorAll('.mbtn').forEach(x=> x.classList.toggle('sel', x.dataset.mi===id));
+  const md = $('modeDesc'); if (md) md.textContent = modeOf(id).desc + `（${modeOf(id).min} 分鐘）`;
+  if (netMode==='host' && !started){ gameMode = id; roomBroadcast(); }
 }
 function buildCharRow(container){
   if (!container) return;
@@ -235,8 +294,69 @@ function buildCharRow(container){
     container.appendChild(b);
   });
 }
+function buildHeroRow(container){
+  if (!container) return;
+  HEROES.forEach((hr,i)=>{
+    const b = document.createElement('div');
+    b.className = 'hbtn'+(i===selHero?' sel':'');
+    b.dataset.hi = i;
+    b.style.setProperty('--ac', '#'+hr.accent.toString(16).padStart(6,'0'));
+    b.title = hr.desc;
+    b.innerHTML = `<div class="hi">${hr.icon}</div><div class="hn">${hr.name}</div><div class="ht">${hr.title}</div>`;
+    b.onclick = ()=> pickHero(i);
+    container.appendChild(b);
+  });
+}
+function buildSkinRow(container){
+  if (!container) return;
+  SKINS.forEach((sk,i)=>{
+    const b = document.createElement('div');
+    b.className = 'sbtn'+(i===selSkin?' sel':'');
+    b.dataset.si = i;
+    const c1 = '#'+sk.steel.toString(16).padStart(6,'0');
+    const c2 = '#'+(sk.dark||0x333).toString(16).padStart(6,'0');
+    b.innerHTML = `<div class="sw" style="background:linear-gradient(135deg,${c1},${c2})"></div><div class="sn">${sk.name}</div>`;
+    b.onclick = ()=> pickSkin(i);
+    container.appendChild(b);
+  });
+}
+function buildModeRow(container){
+  if (!container) return;
+  MODES.forEach(m=>{
+    const b = document.createElement('div');
+    b.className = 'mbtn'+(m.id===selMode?' sel':'');
+    b.dataset.mi = m.id;
+    b.title = m.desc;
+    b.innerHTML = `<div class="mn">${m.name}</div><div class="mt">${m.min} 分鐘</div>`;
+    b.onclick = ()=> pickMode(m.id);
+    container.appendChild(b);
+  });
+}
 buildCharRow($('charRow'));
 buildCharRow($('charRowRoom'));   // 房間內也能換屬性（同大廳選單）
+buildHeroRow($('heroRow'));
+buildHeroRow($('heroRowRoom'));
+buildSkinRow($('skinRow'));
+buildModeRow($('modeRow'));
+pickHero(selHero); pickMode(selMode);   // 初始化描述列
+// 主畫面漂浮屬性字背景
+{
+  const fx = $('menuFx');
+  if (fx){
+    const glyphs = Object.values(EL).map(e=>e.glyph);
+    for (let i=0;i<16;i++){
+      const s = document.createElement('span');
+      const e = Object.values(EL)[i % glyphs.length];
+      s.textContent = e.glyph;
+      s.style.left = rand(2,95)+'%';
+      s.style.color = e.css;
+      s.style.animationDuration = rand(14,30)+'s';
+      s.style.animationDelay = -rand(0,28)+'s';
+      s.style.fontSize = rand(20,52)+'px';
+      fx.appendChild(s);
+    }
+  }
+}
 $('nameIpt').value = localStorage.getItem('wx_name') || '';
 function myName(){
   const v = $('nameIpt').value.trim() || ('玩家'+Math.floor(Math.random()*900+100));
@@ -252,9 +372,10 @@ $('codeIpt').addEventListener('keydown', e=>{ if(e.key==='Enter') $('btnJoin').c
 
 function setupSlotsSolo(){
   netMode='solo'; isHost=true;
+  gameMode = selMode;
   slots = Array.from({length:TEAM_SIZE*2}, (_,i)=> mkSlot(i));
   myIdx = 0;
-  const s = slots[0]; s.ctrl='local'; s.name=myName(); s.char=selChar;
+  const s = slots[0]; s.ctrl='local'; s.name=myName(); s.char=selChar; s.hero=selHero; s.skin=selSkin;
   fillBots();
 }
 function fillBots(){
@@ -263,6 +384,8 @@ function fillBots(){
     s.ctrl='bot'; s.name=BOT_NAMES[bn++ % BOT_NAMES.length];
     // 房間內同隊可預先指定 AI 屬性；未指定則隨機
     s.char = (s.botChar!=null && s.botChar>=0) ? s.botChar : Math.floor(Math.random()*CHARS.length);
+    s.hero = Math.floor(Math.random()*HEROES.length);
+    s.skin = Math.floor(Math.random()*SKINS.length);
     s.gun = [1,2,2,3,4][Math.floor(Math.random()*5)];
   }
 }
@@ -312,9 +435,10 @@ function hostRoom(attempt = 0){
   $('netstat').classList.remove('hidden');
   $('netstat').textContent = '正在建立房間…' + (attempt ? `（自動重試 ${attempt}/3）` : '');
   netMode='host'; isHost=true;
+  gameMode = selMode;
   slots = Array.from({length:TEAM_SIZE*2}, (_,i)=> mkSlot(i));
   myIdx = 0;
-  const s = slots[0]; s.ctrl='local'; s.name=myName(); s.char=selChar;
+  const s = slots[0]; s.ctrl='local'; s.name=myName(); s.char=selChar; s.hero=selHero; s.skin=selSkin;
   peer = new Peer('wxgs-'+code, PEER_OPTS);
   let opened = false;
   const retry = ()=>{   // 建立階段的暫時性網路錯誤：換新 peer 退避重試
@@ -368,11 +492,15 @@ function hostOnData(conn, d){
     let slot = slots.find(s=> s.ctrl==='empty' && s.team===team) || slots.find(s=> s.ctrl==='empty');
     if (!slot){ send(conn, {t:'full'}); return; }
     slot.ctrl='net'; slot.peer=conn.peer; slot.name=String(d.name||'玩家').slice(0,10); slot.char=clamp(d.c|0,0,CHARS.length-1);
+    slot.hero = clamp(d.hr|0, 0, HEROES.length-1);
+    slot.skin = clamp(d.sk|0, 0, SKINS.length-1);
     conns.push(conn); conn._idx = slot.idx;
     send(conn, {t:'you', idx:slot.idx});
     roomBroadcast();
   }
   else if (d.t==='char'){ const s=slots[conn._idx]; if(s&&!started){ s.char=clamp(d.c|0,0,CHARS.length-1); roomBroadcast(); } }
+  else if (d.t==='hero'){ const s=slots[conn._idx]; if(s&&!started){ s.hero=clamp(d.h|0,0,HEROES.length-1); roomBroadcast(); } }
+  else if (d.t==='skin'){ const s=slots[conn._idx]; if(s&&!started){ s.skin=clamp(d.k|0,0,SKINS.length-1); roomBroadcast(); } }
   else if (d.t==='botchar'){ // 同隊玩家指定空位 AI 的屬性
     const from = slots[conn._idx], s = slots[d.i|0];
     if (from && s && !started && s.ctrl==='empty' && s.team===from.team){
@@ -428,8 +556,8 @@ function trySwap(idx){
 let roomBots = true;   // 房主選項：人數不足時是否以 AI 補位（關閉適合 1v1 單挑）
 function roomBroadcast(){
   // 房主自己的槽位以 'net' 送出（'local' 只對本端有意義）
-  const pack = slots.map(s=> ({i:s.idx, c:s.ctrl==='local'?'net':s.ctrl, n:s.name, ch:s.char, tm:s.team, bc:s.botChar}));
-  bcast({t:'room', slots:pack, bots:roomBots});
+  const pack = slots.map(s=> ({i:s.idx, c:s.ctrl==='local'?'net':s.ctrl, n:s.name, ch:s.char, tm:s.team, bc:s.botChar, hr:s.hero, sk:s.skin}));
+  bcast({t:'room', slots:pack, bots:roomBots, md:gameMode});
   renderRoom();
 }
 
@@ -473,7 +601,7 @@ function joinRoom(code, attempt = 0){
     conn.on('open', ()=>{
       opened = true; netWarn = '';
       $('netstat').textContent = '已連上房間 '+code;
-      send(conn, {t:'hi', name:myName(), c:selChar});
+      send(conn, {t:'hi', name:myName(), c:selChar, hr:selHero, sk:selSkin});
       showRoom(code, false);
     });
     conn.on('data', d=> guestOnData(d));
@@ -489,17 +617,21 @@ function guestOnData(d){
   if (d.t==='you'){ myIdx = d.idx; }
   else if (d.t==='room'){
     slots = Array.from({length:TEAM_SIZE*2}, (_,i)=> mkSlot(i));
-    for(const p of d.slots){ const s=slots[p.i]; s.ctrl=p.c; s.name=p.n; s.char=p.ch; s.team=p.tm; s.botChar=p.bc??-1; }
+    for(const p of d.slots){ const s=slots[p.i]; s.ctrl=p.c; s.name=p.n; s.char=p.ch; s.team=p.tm; s.botChar=p.bc??-1;
+      s.hero=p.hr||0; s.skin=p.sk||0; }
     if (slots[myIdx]) slots[myIdx].ctrl='local';
     if (d.bots!==undefined) roomBots = !!d.bots;
+    if (d.md) gameMode = d.md;
     renderRoom();
   }
   else if (d.t==='full'){ netFail('房間已滿。'); }
   else if (d.t==='busy'){ netFail('該房間已開戰，無法加入。'); }
   else if (d.t==='start'){
     slots = Array.from({length:TEAM_SIZE*2}, (_,i)=> mkSlot(i));
-    for(const p of d.slots){ const s=slots[p.i]; s.ctrl=p.c; s.name=p.n; s.char=p.ch; s.team=p.tm; s.gun=p.g; }
+    for(const p of d.slots){ const s=slots[p.i]; s.ctrl=p.c; s.name=p.n; s.char=p.ch; s.team=p.tm; s.gun=p.g;
+      s.hero=p.hr||0; s.skin=p.sk||0; }
     slots[myIdx].ctrl='local';
+    if (d.md) gameMode = d.md;
     matchT = d.time;
     startMatch();
   }
@@ -522,11 +654,18 @@ function showRoom(code, host){
   $('btnBots').classList.toggle('hidden', !host);
   $('btnStart').onclick = ()=>{
     if (roomBots) fillBots();   // 關閉人機補位：空位保持空，適合單挑
-    const pack = slots.map(s=> ({i:s.idx, c:s.ctrl==='local'?'net':s.ctrl, n:s.name, ch:s.char, tm:s.team, g:s.gun}));
-    bcast({t:'start', slots:pack, time:matchT});
+    matchT = modeOf(gameMode).min*60;
+    const pack = slots.map(s=> ({i:s.idx, c:s.ctrl==='local'?'net':s.ctrl, n:s.name, ch:s.char, tm:s.team, g:s.gun, hr:s.hero, sk:s.skin}));
+    bcast({t:'start', slots:pack, time:matchT, md:gameMode});
     startMatch();
   };
   $('btnBots').onclick = ()=>{ roomBots = !roomBots; roomBroadcast(); };
+  $('btnMode').classList.toggle('hidden', !host);
+  $('btnMode').onclick = ()=>{   // 房主循環切換模式
+    const i = MODES.findIndex(m=>m.id===gameMode);
+    gameMode = MODES[(i+1) % MODES.length].id;
+    roomBroadcast();
+  };
   $('btnSwap').onclick = ()=>{
     if (netMode==='host') trySwap(myIdx);
     else if (conns[0]) send(conns[0], {t:'swap'});
@@ -537,9 +676,11 @@ function renderRoom(){
   if ($('room').classList.contains('hidden')) return;
   $('btnBots').textContent = '人機補位：'+(roomBots?'開':'關');
   $('btnStart').textContent = roomBots ? '開始作戰（空位由 AI 補齊）' : '開始作戰（不補人機）';
-  $('roomHint').textContent = (netMode==='host'
-      ? '把房號告訴隊友；等待期間可隨時更換屬性；「人機補位：關」適合單挑。'
-      : '等待房主開始作戰…（等待期間可隨時更換屬性）')
+  const md = modeOf(gameMode);
+  $('btnMode').textContent = `模式：${md.name}（${md.min} 分）`;
+  $('roomHint').textContent = `【${md.name} · ${md.min} 分鐘】${md.desc}。` + (netMode==='host'
+      ? '把房號告訴隊友；等待期間可換角色與屬性。'
+      : '等待房主開始作戰…（等待期間可換角色與屬性）')
     + (roomBots ? '點擊我方空位可指定該 AI 士兵的屬性。' : '');
   const mk = (team, box)=>{
     box.innerHTML='';
@@ -571,8 +712,10 @@ function renderRoom(){
       else {
         d.className = 'slot'+(s.idx===myIdx?' mine':'');
         const e = EL[CHARS[s.char].el];
+        const hr = HEROES[s.hero||0] || HEROES[0];
         const tag = s.idx===myIdx?'你':(s.ctrl==='bot'?'AI':(s.idx===0?'房主':'玩家'));
-        d.innerHTML = `<span class="cg" style="color:${e.css}">${e.glyph}</span><span>${s.name}</span>`+
+        d.innerHTML = `<span class="cg" style="color:${e.css}">${e.glyph}</span>`+
+          `<span>${s.name}<small style="color:#8296b3"> ｜${hr.icon}${hr.name}</small></span>`+
           `<span class="en" style="color:${e.css}">${e.name}</span><span class="tag">${tag}</span>`;
       }
       box.appendChild(d);
@@ -1389,6 +1532,13 @@ function makeAvatar(slot){
   const matBoot = new THREE.MeshStandardMaterial({color:0x16171b, roughness:.92});
   const matElem = new THREE.MeshStandardMaterial({color:e.color, emissive:e.color, emissiveIntensity:.9, roughness:.4});
   const matTeam = new THREE.MeshStandardMaterial({color: team==='red'?0xd84438:0x3f8fe0, roughness:.7});
+  // 角色外觀識別：頭盔色＋胸前識別條；槍皮：槍身配色（全端同步）
+  const hr = HEROES[slot.hero||0] || HEROES[0];
+  const sk = SKINS[slot.skin||0] || SKINS[0];
+  const matHelm = new THREE.MeshStandardMaterial({color:hr.helm, roughness:.6, metalness:.15});
+  const matAcc  = new THREE.MeshStandardMaterial({color:hr.accent, emissive:hr.accent, emissiveIntensity:.35, roughness:.5});
+  const matGun  = new THREE.MeshStandardMaterial({color:sk.steel, roughness:.4, metalness:.55,
+    emissive:sk.glow||0x000000, emissiveIntensity:sk.glow?.25:0});
 
   const parts = [];
   const P = (mesh, part)=>{
@@ -1417,6 +1567,7 @@ function makeAvatar(slot){
     pouch.position.set(-.14+i*.14, 1.19, .175);
   }
   const bpack = P(new THREE.Mesh(new THREE.BoxGeometry(.34,.36,.14), matGear2), 'body'); bpack.position.set(0,1.32,-.2);
+  const accst = P(new THREE.Mesh(new THREE.BoxGeometry(.5,.045,.31), matAcc)); accst.position.y = 1.47;   // 角色識別條
   const emblem = P(new THREE.Mesh(new THREE.BoxGeometry(.15,.15,.02), matElem)); emblem.position.set(0,1.38,-.285);
   // ---- 肩甲（屬性色）與臂章（隊色） ----
   const padL = P(new THREE.Mesh(new THREE.BoxGeometry(.15,.09,.21), matElem)); padL.position.set(-.31,1.52,0);
@@ -1432,15 +1583,15 @@ function makeAvatar(slot){
   const armLF = P(new THREE.Mesh(new THREE.BoxGeometry(.1,.26,.11), matSkin));
   armLF.position.set(-.1,1.3,.38); armLF.rotation.set(-1.4,0,-.6);
   // ---- 槍（依所持武器調整長度）＋彈匣 ----
-  const gun = P(new THREE.Mesh(new THREE.BoxGeometry(.07,.11,.72), matGear));
+  const gun = P(new THREE.Mesh(new THREE.BoxGeometry(.07,.11,.72), matGun));   // 槍皮配色
   gun.position.set(.1,1.33,.42);
   const mag = P(new THREE.Mesh(new THREE.BoxGeometry(.05,.15,.07), matGear2));
   mag.position.set(.1,1.23,.4); mag.rotation.x = .25;
   // ---- 頭部：頸/頭/頭盔/盔沿/護目鏡 ----
   const neck = P(new THREE.Mesh(new THREE.CylinderGeometry(.06,.075,.09,8), matSkin)); neck.position.y = 1.57;
   const head = P(new THREE.Mesh(new THREE.SphereGeometry(.15,12,10), matSkin), 'head'); head.position.y = 1.69;
-  const helm = P(new THREE.Mesh(new THREE.SphereGeometry(.175,12,8,0,Math.PI*2,0,Math.PI/1.85), matBody), 'head'); helm.position.y = 1.71;
-  const brim = P(new THREE.Mesh(new THREE.BoxGeometry(.3,.03,.1), matBody)); brim.position.set(0,1.72,.16);
+  const helm = P(new THREE.Mesh(new THREE.SphereGeometry(.175,12,8,0,Math.PI*2,0,Math.PI/1.85), matHelm), 'head'); helm.position.y = 1.71;
+  const brim = P(new THREE.Mesh(new THREE.BoxGeometry(.3,.03,.1), matHelm)); brim.position.set(0,1.72,.16);
   const gog  = P(new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.03), matGear)); gog.position.set(0,1.7,.15);
   // 隊友名牌可透視、敵方名牌會被牆擋住（避免穿牆透視）
   const isAlly = slots[myIdx] && slot.team === slots[myIdx].team;
@@ -1497,9 +1648,18 @@ function respawnLocal(){
   me.pos.copy(p); me.vel.set(0,0,0);
   me.yaw = Math.atan2(-p.x, -p.z); // 面向場中央
   me.pitch = 0; me.dead=false;
+  if (gameMode==='sniper') me.gun = 4;
   me.ammo = GUNS[me.gun].mag; me.reloading=0;
-  me.nades = 2;   // 重生補滿手雷
+  me.nades = 2 + ((HEROES[slots[myIdx].hero||0]||{}).nades||0);   // 工兵被動：手雷 +1
   $('deathScr').classList.add('hidden');
+}
+/* 屬性輪盤模式：本地玩家屬性變更後刷新槍模與 HUD */
+function applyMyChar(){
+  const c = CHARS[slots[myIdx].char], e = EL[c.el];
+  rebuildViewmodel();
+  $('elemtag').innerHTML = `<span style="color:${e.css}">${e.glyph} ${e.name} · ${e.fx}</span>`;
+  $('chipSkill').textContent = 'E · '+c.skill;
+  centerMsg('屬性輪轉 — '+e.glyph+' '+e.name);
 }
 
 function collideMove(pos, vel, dt, half=0.36, height=1.8){
@@ -1539,6 +1699,7 @@ function updateLocal(dt){
   let speed = 4.6;
   if ((keys.ShiftLeft || (touchMove && touchMag > 0.92)) && !me.zoomed) speed = 6.4; // 搖桿推到底=疾跑
   const sprinting = speed > 6;
+  speed *= 1 + ((HEROES[slot.hero||0]||{}).speed||0);   // 燼：移速被動
   if (fx.slow>0) speed *= 0.6;
   if (fx.haste>0) speed *= 1.5;
   if (rooted) speed = 0;
@@ -1977,13 +2138,16 @@ function buildViewmodel(){
 function rebuildViewmodel(){
   while(viewmodel.children.length) viewmodel.remove(viewmodel.children[0]);
   const e = EL[CHARS[slots[myIdx]?.char ?? selChar].el];
-  // 寫實槍材
+  // 槍皮配色（個人外觀）
+  const sk = SKINS[slots[myIdx]?.skin ?? selSkin] || SKINS[0];
+  const gl = sk.glow || 0x000000, gi = sk.glow ? 0.16 : 0;
   const M = {
-    black: new THREE.MeshStandardMaterial({color:0x23272d, roughness:.4,  metalness:.62}),
-    dark:  new THREE.MeshStandardMaterial({color:0x363c45, roughness:.46, metalness:.55}),
-    steel: new THREE.MeshStandardMaterial({color:0x8b939c, roughness:.24, metalness:.9}),
-    wood:  new THREE.MeshStandardMaterial({map:TEX.wood,  roughness:.75}),
-    poly:  new THREE.MeshStandardMaterial({color:0x2e3237, roughness:.75, metalness:.05}),
+    black: new THREE.MeshStandardMaterial({color:sk.body,  roughness:.4,  metalness:.62, emissive:gl, emissiveIntensity:gi*.5}),
+    dark:  new THREE.MeshStandardMaterial({color:sk.dark,  roughness:.46, metalness:.55, emissive:gl, emissiveIntensity:gi*.5}),
+    steel: new THREE.MeshStandardMaterial({color:sk.steel, roughness:.24, metalness:.9,  emissive:gl, emissiveIntensity:gi}),
+    wood:  sk.wood ? new THREE.MeshStandardMaterial({color:sk.wood, roughness:.55, metalness:.25, emissive:gl, emissiveIntensity:gi*.6})
+                   : new THREE.MeshStandardMaterial({map:TEX.wood,  roughness:.75}),
+    poly:  new THREE.MeshStandardMaterial({color:sk.body, roughness:.75, metalness:.05}),
     elem:  new THREE.MeshStandardMaterial({color:e.color, emissive:e.color, emissiveIntensity:1.1}),
   };
   const B = (w,h,d,mat,x,y,z,rx=0,rz=0)=>{
@@ -2084,11 +2248,22 @@ function hostApplyHit(attIdx, vicIdx, part, gunIdx, dist){
   if (vic.fx.shield > 0){ addUlt(att, 2); return; }
   const g = GUNS[clamp(gunIdx,0,5)];
   const aEl = CHARS[att.char].el, vEl = CHARS[vic.char].el;
+  const aH = HEROES[att.hero||0] || HEROES[0], vH = HEROES[vic.hero||0] || HEROES[0];   // 角色被動
   let dmg = g.dmg;
   const falloff = clamp(1 - Math.max(0, dist-g.range)/g.range, 0.35, 1);
   dmg *= falloff;
-  if (part==='head') dmg *= g.hs;
+  if (part==='head') dmg *= g.hs * (1 + (aH.hsBonus||0));  // 鷹眼：爆頭加成
   dmg *= elemMult(aEl, vEl);
+  if (gameMode==='hs' && part!=='head') dmg *= 0.15;       // 爆頭對決：身體傷害大幅衰減
+  if (aH.crit && Math.random() < aH.crit) dmg *= 1.5;      // 福星：機率暴擊
+  if (aH.close && dist < 8) dmg *= 1 + aH.close;           // 蠻牛：近距加成
+  if (aH.backstab){                                         // 影歌：背刺加成
+    const ap = att.idx===myIdx ? me.pos : att.pos;
+    const vp0 = vic.idx===myIdx ? me.pos : vic.pos;
+    const bx = vp0.x-ap.x, bz = vp0.z-ap.z, bl = Math.hypot(bx,bz)||1;
+    if ((-Math.sin(vic.ry))*(bx/bl) + (-Math.cos(vic.ry))*(bz/bl) > 0.35) dmg *= 1 + aH.backstab;
+  }
+  dmg *= 1 - (vH.tanky||0);                                // 磐石：減傷
   if (aEl==='metal' && Math.random()<0.2) dmg *= 1.5;      // 金：必爆機率
   if (aEl==='fire'){
     if (vic.fx.root > 0){                                   // 五行反應：木生火 → 爆燃
@@ -2181,11 +2356,16 @@ function hostDamage(vic, dmg, att, hs=false, cause=''){
   if (vic.hp <= 0) hostKill(vic, att, hs, cause);
 }
 function hostHeal(s, v){ s.hp = clamp(s.hp+v, 0, 100); updateHpBar(s); }
-function addUlt(s, v){ s.ult = clamp(s.ult+v, 0, 100); }
+function addUlt(s, v){ s.ult = clamp(s.ult + v*(1 + ((HEROES[s.hero||0]||{}).ultRate||0)), 0, 100); }   // 宗師：充能加速
 function hostKill(vic, att, hs, cause){
   vic.alive = false; vic.hp = 0; vic.deaths++;
   vic.streak = 0;
   vic.respawnAt = now() + RESPAWN_SEC;
+  if (gameMode==='elim'){   // 一命殲滅：不重生，全滅即結束
+    vic.respawnAt = 0;
+    const anyAlive = t => slots.some(o=> o.ctrl!=='empty' && o.alive && o.team===t && o!==vic);
+    if (!anyAlive('red') || !anyAlive('blue')) setTimeout(()=>{ if (started) hostEndMatch(); }, 1500);
+  }
   let pts = 0;
   if (att && att.team !== vic.team){
     att.kills++; att.streak++;
@@ -2286,7 +2466,7 @@ function localSkill(){
   if (me.dead || (isHost && s.skillCd > 0)) return;
   if (s.fx.silence > 0){ centerMsg('技能被聲爆封鎖！'); sfx('click', .9); return; }
   vmCast = 1; shakeCam(0.07);   // 施法甩槍動作
-  if (isHost) s.skillCd = CHARS[s.char].skillCd;
+  if (isHost) s.skillCd = CHARS[s.char].skillCd * (1 - ((HEROES[s.hero||0]||{}).cdr||0));   // 守望：冷卻縮減
   const dir = new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(me.pitch, me.yaw, 0, 'YXZ'));
   const data = {t:'skill', dir:[+dir.x.toFixed(3),+dir.y.toFixed(3),+dir.z.toFixed(3)],
                 p:[+me.pos.x.toFixed(2),+me.pos.y.toFixed(2),+me.pos.z.toFixed(2)]};
@@ -2659,9 +2839,13 @@ function onGameEvent(d){
     if (d.v === myIdx){
       me.dead = true;
       $('deathScr').classList.remove('hidden');
-      let sec = RESPAWN_SEC;
-      $('respawnTxt').textContent = `${sec} 秒後重返戰場…`;
-      const iv = setInterval(()=>{ sec--; if(sec<=0){ clearInterval(iv); } else $('respawnTxt').textContent = `${sec} 秒後重返戰場…`; }, 1000);
+      if (gameMode==='elim'){
+        $('respawnTxt').textContent = '你已被淘汰 — 觀戰至回合結束';
+      } else {
+        let sec = RESPAWN_SEC;
+        $('respawnTxt').textContent = `${sec} 秒後重返戰場…`;
+        const iv = setInterval(()=>{ sec--; if(sec<=0){ clearInterval(iv); } else $('respawnTxt').textContent = `${sec} 秒後重返戰場…`; }, 1000);
+      }
     }
     if (d.a === myIdx){
       const st = d.st || slots[myIdx].streak;
@@ -4254,7 +4438,7 @@ function botThink(s, dt){
     if (s.fx.gat > 0) seeTarget = true;   // 殲滅砲：貫穿掩體無視遮蔽
   }
 
-  let speed = 4.0 * (fx.slow>0?0.6:1) * (fx.haste>0?1.4:1);
+  let speed = 4.0 * (fx.slow>0?0.6:1) * (fx.haste>0?1.4:1) * (1 + ((HEROES[s.hero||0]||{}).speed||0));
   const mv = new THREE.Vector3();
   if (seeTarget){
     // 反應延遲：剛看到目標需 0.45~0.95 秒才開始射擊
@@ -4299,7 +4483,8 @@ function botThink(s, dt){
     }
     // 技能
     if (s.skillCd<=0 && Math.random()<dt*0.25){ hostUseSkill(s.idx, {
-      dir:[-Math.sin(s.ry),0,-Math.cos(s.ry)], p:[s.pos.x,s.pos.y,s.pos.z]}); s.skillCd = CHARS[s.char].skillCd; }
+      dir:[-Math.sin(s.ry),0,-Math.cos(s.ry)], p:[s.pos.x,s.pos.y,s.pos.z]});
+      s.skillCd = CHARS[s.char].skillCd * (1 - ((HEROES[s.hero||0]||{}).cdr||0)); }
     if (s.ult>=100 && td<20 && Math.random()<dt*0.5) hostUseUlt(s.idx);
     b.wp = null;
   } else {
@@ -4370,6 +4555,8 @@ function hostTick(dt){
       if (s.alive){ hostDamage(s, 8*dt, slots[fx.burnSrc], false, '灼燒'); }   // 火：灼燒強化
     }
     if (fx.regen>0 && s.alive) hostHeal(s, 12*dt);
+    const hb = HEROES[s.hero||0] || {};
+    if (hb.regen && s.alive && s.hp < 100) hostHeal(s, hb.regen*dt);   // 白芷：持續回復
     if (s.skillCd>0) s.skillCd-=dt;
     addUlt(s, dt*0.8);
     // 重生
@@ -4377,6 +4564,11 @@ function hostTick(dt){
       s.alive = true; s.hp = 100; s.respawnAt = 0;
       const p = spawnPoint(s.team);
       s.pos.copy(p);
+      if (gameMode==='roulette'){   // 屬性輪盤：每次重生隨機屬性（快照同步全端）
+        s.char = Math.floor(Math.random()*CHARS.length);
+        if (s.idx===myIdx) applyMyChar();
+      }
+      if (gameMode==='sniper') s.gun = 4;
       updateHpBar(s);
       if (s.idx===myIdx){ respawnLocal(); }
       if (s.ctrl==='bot') s.bot = null;
@@ -4448,7 +4640,7 @@ function snapshotTick(){
     +s.ry.toFixed(3), +s.rx.toFixed(3),
     Math.round(s.hp), s.alive?1:0, s.gun, s.moving?1:0,
     (s.fx.burn>0?1:0)|(s.fx.slow>0?2:0)|(s.fx.root>0?4:0)|(s.fx.stun>0?8:0)|(s.fx.shield>0?16:0)|(s.fx.haste>0?32:0)|(s.fx.gat>0?64:0)|(s.fx.blind>0?128:0)|(s.fx.stealth>0?256:0)|(s.fx.tslow>0?512:0)|(s.fx.deaf>0?1024:0)|(s.fx.silence>0?2048:0)|(s.fx.reveal>0?4096:0),
-    Math.round(s.ult), s.pose||0,
+    Math.round(s.ult), s.pose||0, s.char,
   ]);
   bcast({t:'st', time:Math.round(matchT), r:scores.red, b:scores.blue, pl});
 }
@@ -4464,6 +4656,10 @@ function applySnapshot(d){
     s.fx.stun = fb&8?1:0; s.fx.shield = fb&16?1:0; s.fx.haste = fb&32?1:0; s.fx.gat = fb&64?1:0;
     s.fx.blind = fb&128?1:0; s.fx.stealth = fb&256?1:0;
     s.fx.tslow = fb&512?1:0; s.fx.deaf = fb&1024?1:0; s.fx.silence = fb&2048?1:0; s.fx.reveal = fb&4096?1:0;
+    if (p[12] !== undefined && p[12] !== s.char){   // 屬性輪盤：快照同步屬性變更
+      s.char = p[12];
+      if (i === myIdx) applyMyChar();
+    }
     if (i === myIdx){
       if (s.alive && p[5] < s._lastHp) hurtFeedback();
       s._lastHp = p[5];
@@ -4491,14 +4687,16 @@ function startMatch(){
   $('netstat').classList.toggle('hidden', netMode==='solo');
   if (!scene) { buildWorld(); buildViewmodel(); }
   started = true;
-  matchT = MATCH_MINUTES*60;
+  if (netMode !== 'guest') matchT = modeOf(gameMode).min*60;   // 來賓沿用房主封包的時間
   scores = {red:0, blue:0};
   for (const s of slots){
     if (s.ctrl==='empty') continue;
     s.hp = 100; s.alive = true;
     s.pos.copy(spawnPoint(s.team));
+    if (gameMode==='sniper') s.gun = 4;   // 狙神競賽：全員鎖狙擊槍
     if (s.idx !== myIdx) makeAvatar(s);
   }
+  if (gameMode==='sniper') me.gun = 4;
   slots[myIdx].gun = me.gun;
   respawnLocal();
   rebuildViewmodel();
@@ -4735,6 +4933,7 @@ addEventListener('keydown', e=>{
   }
 });
 function switchGun(i){
+  if (started && gameMode==='sniper') return;   // 狙神競賽：鎖定狙擊槍
   if (i===me.gun || me._swapT > 0) return;
   // 兩段式換槍：先收槍（下壓翻轉），到位後才換上新槍並播舉槍動畫（見 updateLocal）
   me._swapTo = i;
@@ -4753,7 +4952,7 @@ function doSkill(){
   if (isHost) localSkill();
   else { const s=slots[myIdx];
     if (s.fx.silence>0){ centerMsg('技能被聲爆封鎖！'); sfx('click', .9); return; }
-    if (localSkillCd<=0 && !me.dead){ localSkillCd = CHARS[s.char].skillCd; localSkill(); } }
+    if (localSkillCd<=0 && !me.dead){ localSkillCd = CHARS[s.char].skillCd * (1 - ((HEROES[s.hero||0]||{}).cdr||0)); localSkill(); } }
 }
 addEventListener('keyup', e=>{ keys[e.code]=false; if(e.code==='Tab') $('board').classList.add('hidden'); });
 addEventListener('mousemove', e=>{
