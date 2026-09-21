@@ -69,14 +69,20 @@ const HEROES = [
   { name:'宗師', title:'絕技宗師', desc:'大招充能速度 +15%',       icon:'★',  ultRate:.15, helm:0x3a3050, accent:0xe879f9 },
   { name:'福星', title:'幸運傭兵', desc:'8% 機率 1.5 倍暴擊',      icon:'♠',  crit:.08,    helm:0x50432a, accent:0xffe36b },
 ];
-/* 槍皮（個人外觀，全端同步顯示） */
+/* 槍皮（個人外觀，全端同步）：各有專屬造型件與動態特效，不只是換色 */
 const SKINS = [
-  { name:'經典戰術', body:0x23272d, dark:0x363c45, steel:0x8b939c, wood:0,        glow:0 },
-  { name:'曜金',     body:0x3a3320, dark:0x6b5a26, steel:0xd9b64a, wood:0xc9a24a, glow:0xffd45e },
-  { name:'緋獄',     body:0x33161a, dark:0x5c2028, steel:0xc4485c, wood:0x8a2432, glow:0xff4655 },
-  { name:'寒霜',     body:0x1c2a38, dark:0x2e4a60, steel:0x9fd8f0, wood:0x5c7f9a, glow:0x9fd8f0 },
-  { name:'翡翠',     body:0x16302a, dark:0x1f4a3e, steel:0x4ec9a5, wood:0x2e6b54, glow:0x4ec9a5 },
-  { name:'夜紫',     body:0x241c33, dark:0x39284f, steel:0x9a6bff, wood:0x5a3d80, glow:0xa06bff },
+  { name:'經典戰術', fx:null,    fxd:'標準軍規塗裝',
+    body:0x23272d, dark:0x363c45, steel:0x8b939c, wood:0,        glow:0 },
+  { name:'曜金龍紋', fx:'gold',  fxd:'龍脊鰭刃‧鎏金閃輝',
+    body:0x3a3320, dark:0x6b5a26, steel:0xd9b64a, wood:0xc9a24a, glow:0xffd45e },
+  { name:'緋獄魔燄', fx:'ember', fxd:'熔岩魔紋‧餘燼飄升',
+    body:0x2a1216, dark:0x5c2028, steel:0xc4485c, wood:0x8a2432, glow:0xff4655 },
+  { name:'寒霜冰晶', fx:'frost', fxd:'冰晶結晶‧寒霧繚繞',
+    body:0x1c2a38, dark:0x2e4a60, steel:0x9fd8f0, wood:0x5c7f9a, glow:0x9fd8f0 },
+  { name:'翡翠靈蛇', fx:'jade',  fxd:'靈蛇玉環‧翠光流轉',
+    body:0x16302a, dark:0x1f4a3e, steel:0x4ec9a5, wood:0x2e6b54, glow:0x4ec9a5 },
+  { name:'夜紫雷髓', fx:'volt',  fxd:'雷髓線圈‧電弧竄流',
+    body:0x241c33, dark:0x39284f, steel:0x9a6bff, wood:0x5a3d80, glow:0xa06bff },
 ];
 /* 作戰模式（全部 5 分鐘內速戰速決） */
 const MODES = [
@@ -297,6 +303,128 @@ function buildCharRow(container){
     container.appendChild(b);
   });
 }
+/* 角色頭像：程序化手繪，每位角色的臉型/髮型/頭飾/表情皆不同 */
+function heroPortrait(i){
+  const cv = document.createElement('canvas'); cv.width = cv.height = 96;
+  const c = cv.getContext('2d');
+  const hr = HEROES[i];
+  const ac = '#'+hr.accent.toString(16).padStart(6,'0');
+  const tones = ['#e8b28a','#c98f66','#e3ad84','#f2c9a8','#d9a074','#b98f78','#c78e5f','#d8ad88','#e6c19a','#e0aa80'];
+  const skin = tones[i], skinD = '#00000022';
+  // 背景：暗底＋角色色斜光帶
+  const g = c.createLinearGradient(0,0,96,96);
+  g.addColorStop(0,'#202a3a'); g.addColorStop(1,'#0b0f16');
+  c.fillStyle = g; c.fillRect(0,0,96,96);
+  c.save(); c.globalAlpha = .3; c.fillStyle = ac;
+  c.beginPath(); c.moveTo(0,96); c.lineTo(96,26); c.lineTo(96,96); c.closePath(); c.fill(); c.restore();
+  // 肩與衣領
+  c.fillStyle = '#252b33'; c.beginPath(); c.roundRect(14,76,68,20,7); c.fill();
+  c.fillStyle = ac; c.fillRect(14,76,68,3);
+  // 頸與臉（臉型：0..9 微調寬窄）
+  const fw = [36,42,36,33,38,35,40,36,35,36][i], fh = [42,40,42,42,41,42,41,42,44,41][i];
+  const fx0 = 48-fw/2, fy0 = 26;
+  c.fillStyle = skin; c.fillRect(42,64,12,14);
+  c.beginPath(); c.roundRect(fx0,fy0,fw,fh,[12,9,12,14,11,12,8,12,11,12][i]); c.fill();
+  c.fillStyle = skinD; c.beginPath(); c.roundRect(fx0,fy0+fh-9,fw,9,6); c.fill();   // 下顎陰影
+  // 耳
+  c.fillStyle = skin;
+  c.beginPath(); c.arc(fx0-1,48,4,0,7); c.arc(fx0+fw+1,48,4,0,7); c.fill();
+  const eyeY = 46;
+  const eye = (x,open=1,col='#20242c')=>{ c.fillStyle=col;
+    if (open) { c.beginPath(); c.ellipse(x,eyeY,3.4,3.8*open,0,0,7); c.fill(); }
+    else { c.strokeStyle=col; c.lineWidth=2; c.beginPath(); c.moveTo(x-4,eyeY); c.lineTo(x+4,eyeY); c.stroke(); } };
+  const brow = (x,tilt=0,w=9)=>{ c.strokeStyle='#2b2620'; c.lineWidth=2.6;
+    c.beginPath(); c.moveTo(x-w/2,40-tilt); c.lineTo(x+w/2,40+tilt); c.stroke(); };
+  const mouth = k=>{ c.strokeStyle='#7c4a3a'; c.lineWidth=2.2; c.beginPath();
+    if (k==='smile'){ c.arc(48,58,6,.25,Math.PI-.25); }
+    else if (k==='grin'){ c.arc(48,57,7,.15,Math.PI-.15); c.stroke(); c.fillStyle='#fff'; c.fillRect(43,58,10,3); return; }
+    else if (k==='frown'){ c.arc(48,66,6,Math.PI+.3,-.3); }
+    else { c.moveTo(43,60); c.lineTo(53,60); }
+    c.stroke(); };
+  switch(i){
+    case 0:   // 燼：橘刺髮＋頭帶＋臉頰疤
+      c.fillStyle='#8a4a22';
+      for(let s=0;s<5;s++){ c.beginPath(); c.moveTo(fx0+4+s*7,32); c.lineTo(fx0+8+s*7,18-(s%2)*5); c.lineTo(fx0+12+s*7,32); c.fill(); }
+      c.fillStyle=ac; c.fillRect(fx0-2,30,fw+4,6);
+      eye(40); eye(56); brow(40,-2); brow(56,2); mouth('smile');
+      c.strokeStyle='#a06a4a'; c.lineWidth=1.6; c.beginPath(); c.moveTo(59,52); c.lineTo(63,58); c.stroke();
+      break;
+    case 1:   // 磐石：厚重頭盔＋絡腮鬍
+      c.fillStyle='#3d4a3a'; c.beginPath(); c.roundRect(fx0-4,20,fw+8,20,9); c.fill();
+      c.fillStyle='#2c3629'; c.fillRect(fx0-4,36,fw+8,4);
+      c.fillStyle='#586858'; for(const rx of [32,48,64]){ c.beginPath(); c.arc(rx,28,1.6,0,7); c.fill(); }
+      c.fillStyle='#4a382a'; c.beginPath(); c.roundRect(fx0+2,52,fw-4,17,7); c.fill();   // 鬍
+      eye(41); eye(55); brow(41,1,10); brow(55,-1,10); mouth('flat');
+      break;
+    case 2:   // 鷹眼：棒球帽＋單眼瞄準鏡
+      c.fillStyle='#27313f'; c.beginPath(); c.roundRect(fx0-2,20,fw+4,16,8); c.fill();
+      c.fillStyle='#1c242f'; c.fillRect(fx0-8,33,fw+10,5);   // 帽簷
+      eye(40,.6); brow(40,0);
+      c.fillStyle='#12314a'; c.beginPath(); c.roundRect(50,41,13,10,3); c.fill();   // 鏡
+      c.fillStyle=ac; c.beginPath(); c.arc(56.5,46,3,0,7); c.fill();
+      mouth('flat');
+      break;
+    case 3:   // 白芷：白髮髻＋醫療十字髮夾＋溫柔笑
+      c.fillStyle='#eef0f2'; c.beginPath(); c.roundRect(fx0-3,24,fw+6,14,10); c.fill();
+      c.beginPath(); c.arc(48,20,9,0,7); c.fill();
+      c.fillStyle='#ff5a6e'; c.fillRect(60,22,8,3); c.fillRect(62.5,19.5,3,8);
+      eye(41); eye(55);
+      c.strokeStyle='#20242c'; c.lineWidth=1.4;   // 睫毛
+      c.beginPath(); c.moveTo(36,43); c.lineTo(39,42); c.moveTo(57,42); c.lineTo(60,43); c.stroke();
+      brow(41,-1,7); brow(55,1,7); mouth('smile');
+      c.fillStyle='#f0a0a0'; c.globalAlpha=.4; c.beginPath(); c.arc(38,54,3,0,7); c.arc(58,54,3,0,7); c.fill(); c.globalAlpha=1;
+      break;
+    case 4:   // 雷管：毛帽＋額頭護目鏡＋燦笑
+      c.fillStyle='#5a4a2e'; c.beginPath(); c.roundRect(fx0-2,18,fw+4,17,9); c.fill();
+      c.fillStyle='#6b5a3a'; c.fillRect(fx0-2,32,fw+4,4);
+      c.fillStyle='#222'; c.beginPath(); c.roundRect(36,34,24,7,3); c.fill();   // 護目鏡帶
+      c.fillStyle=ac; c.beginPath(); c.roundRect(39,33,8,8,3); c.fill(); c.beginPath(); c.roundRect(50,33,8,8,3); c.fill();
+      eye(41); eye(55); brow(41,-2); brow(55,-2); mouth('grin');
+      break;
+    case 5:   // 影歌：兜帽＋面罩＋紫光眼
+      c.fillStyle='#241c33'; c.beginPath();
+      c.moveTo(20,70); c.quadraticCurveTo(22,14,48,12); c.quadraticCurveTo(74,14,76,70);
+      c.lineTo(66,70); c.quadraticCurveTo(64,30,48,28); c.quadraticCurveTo(32,30,30,70); c.closePath(); c.fill();
+      c.fillStyle='#171126'; c.beginPath(); c.roundRect(33,54,30,14,6); c.fill();   // 面罩
+      c.fillStyle=ac; c.shadowColor=ac; c.shadowBlur=6;
+      c.beginPath(); c.ellipse(41,46,3,2.4,0,0,7); c.ellipse(55,46,3,2.4,0,0,7); c.fill();
+      c.shadowBlur=0;
+      break;
+    case 6:   // 蠻牛：莫霍克＋戰紋＋眉疤
+      c.fillStyle='#b8402c'; c.beginPath(); c.roundRect(42,10,12,24,4); c.fill();
+      eye(40); eye(56); brow(40,3,11); brow(56,-3,11); mouth('frown');
+      c.fillStyle=ac; c.globalAlpha=.7;
+      c.fillRect(31,50,9,3); c.fillRect(56,50,9,3); c.globalAlpha=1;   // 戰紋
+      c.strokeStyle='#8a5a42'; c.lineWidth=2; c.beginPath(); c.moveTo(52,36); c.lineTo(60,40); c.stroke();
+      break;
+    case 7:   // 守望：全罩面甲＋發光橫視窗
+      c.fillStyle='#2c4a4a'; c.beginPath(); c.roundRect(fx0-3,22,fw+6,fh+8,13); c.fill();
+      c.fillStyle='#223a3a'; c.fillRect(fx0-3,52,fw+6,4);
+      c.fillStyle=ac; c.shadowColor=ac; c.shadowBlur=8;
+      c.beginPath(); c.roundRect(fx0+3,42,fw-6,7,3.5); c.fill(); c.shadowBlur=0;
+      c.fillStyle='#1a2c2c'; c.fillRect(44,58,8,8);   // 通氣口
+      break;
+    case 8:   // 宗師：髮髻＋長眉＋閉目＋長鬚
+      c.fillStyle='#d8d8d4'; c.beginPath(); c.arc(48,17,7,0,7); c.fill();
+      c.fillStyle='#c9c9c4'; c.beginPath(); c.roundRect(fx0,24,fw,10,8); c.fill();
+      eye(41,0); eye(55,0);
+      c.strokeStyle='#d8d8d4'; c.lineWidth=2.4;   // 壽眉
+      c.beginPath(); c.moveTo(33,40); c.lineTo(45,38); c.moveTo(51,38); c.lineTo(63,40); c.stroke();
+      c.fillStyle='#e4e4e0'; c.beginPath();       // 長鬚
+      c.moveTo(38,60); c.quadraticCurveTo(48,92,58,60); c.closePath(); c.fill();
+      mouth('flat');
+      break;
+    case 9:   // 福星：紳士帽＋眨眼＋嘴角上揚＋撲克刺青
+      c.fillStyle='#26221a'; c.beginPath(); c.roundRect(fx0-8,30,fw+16,6,3); c.fill();
+      c.beginPath(); c.roundRect(fx0+1,12,fw-2,20,6); c.fill();
+      c.fillStyle=ac; c.fillRect(fx0+1,26,fw-2,4);
+      eye(40); eye(56,0); brow(40,-2); brow(56,2); mouth('smile');
+      c.fillStyle=ac; c.font='900 10px serif'; c.fillText('♠', 59, 56);
+      break;
+  }
+  return cv.toDataURL();
+}
+const HERO_PORTRAITS = HEROES.map((h,i)=> heroPortrait(i));
 function buildHeroRow(container){
   if (!container) return;
   HEROES.forEach((hr,i)=>{
@@ -305,7 +433,7 @@ function buildHeroRow(container){
     b.dataset.hi = i;
     b.style.setProperty('--ac', '#'+hr.accent.toString(16).padStart(6,'0'));
     b.title = hr.desc;
-    b.innerHTML = `<div class="hi">${hr.icon}</div><div class="hn">${hr.name}</div><div class="ht">${hr.title}</div>`;
+    b.innerHTML = `<img class="hp" src="${HERO_PORTRAITS[i]}" alt=""><div class="hn">${hr.name}</div><div class="ht">${hr.title}</div>`;
     b.onclick = ()=> pickHero(i);
     container.appendChild(b);
   });
@@ -318,7 +446,8 @@ function buildSkinRow(container){
     b.dataset.si = i;
     const c1 = '#'+sk.steel.toString(16).padStart(6,'0');
     const c2 = '#'+(sk.dark||0x333).toString(16).padStart(6,'0');
-    b.innerHTML = `<div class="sw" style="background:linear-gradient(135deg,${c1},${c2})"></div><div class="sn">${sk.name}</div>`;
+    b.innerHTML = `<div class="sw" style="background:linear-gradient(135deg,${c1},${c2})"></div>`+
+      `<div class="sn">${sk.name}</div><div class="sf">${sk.fxd}</div>`;
     b.onclick = ()=> pickSkin(i);
     container.appendChild(b);
   });
@@ -404,11 +533,20 @@ function buildSoldierMesh(heroI, charI, skinI){
   B(new THREE.BoxGeometry(.1,.26,.11), matSkin, -.1,1.3,.38, -1.4,0,-.6);
   B(new THREE.BoxGeometry(.07,.11,.72), matGun, .1,1.33,.42);      // 槍（槍皮色）
   B(new THREE.BoxGeometry(.05,.15,.07), matGear2, .1,1.23,.4, .25);
+  if (sk.fx){   // 槍皮造型件（展示台靜態版：鰭刃/魔紋/冰晶/玉環/線圈）
+    const mFx = new THREE.MeshStandardMaterial({color:sk.steel, emissive:sk.glow||0xffffff,
+      emissiveIntensity:1, transparent:true, opacity:.92});
+    for (let i=0;i<3;i++){
+      const z = .24 + i*.17;
+      if (sk.fx==='gold') B(new THREE.ConeGeometry(.02,.06,4), mFx, .1, 1.41, z);
+      else if (sk.fx==='frost') B(new THREE.OctahedronGeometry(.027), mFx, .1+(i%2?.045:-.045), 1.4, z, rand(0,1), rand(0,1));
+      else if (sk.fx==='jade' || sk.fx==='volt') B(new THREE.TorusGeometry(.055,.008,6,14), mFx, .1, 1.33, z);
+      else B(new THREE.BoxGeometry(.006,.022,.07), mFx, .137, 1.33, z);   // ember 魔紋
+    }
+  }
   B(new THREE.CylinderGeometry(.06,.075,.09,8), matSkin, 0,1.57,0);
   B(new THREE.SphereGeometry(.15,14,12), matSkin, 0,1.69,0);
-  B(new THREE.SphereGeometry(.175,14,10,0,Math.PI*2,0,Math.PI/1.85), matHelm, 0,1.71,0);  // 角色頭盔
-  B(new THREE.BoxGeometry(.3,.03,.1), matHelm, 0,1.72,.16);
-  B(new THREE.BoxGeometry(.24,.055,.03), matGear, 0,1.7,.15);
+  g.add(heroHeadgearGroup(heroI));   // 角色專屬頭部裝備
   // 展示台座＋屬性光環
   B(new THREE.CylinderGeometry(.72,.8,.06,36),
     new THREE.MeshStandardMaterial({color:0x1a2029, roughness:.45, metalness:.4}), 0,-.05,0);
@@ -1622,6 +1760,72 @@ function nameSprite(name, teamCss, seeThrough){
   s.scale.set(2.2, 0.68, 1);
   return s;
 }
+/* 角色專屬頭部裝備（3D 替身與主畫面預覽共用）：每位角色一眼可辨 */
+function heroHeadgearGroup(heroI){
+  const hr = HEROES[heroI] || HEROES[0];
+  const g = new THREE.Group();
+  const mH = new THREE.MeshStandardMaterial({color:hr.helm, roughness:.6, metalness:.15});
+  const mA = new THREE.MeshStandardMaterial({color:hr.accent, emissive:hr.accent, emissiveIntensity:.5, roughness:.5});
+  const mD = new THREE.MeshStandardMaterial({color:0x22252a, roughness:.6, metalness:.2});
+  const mW = new THREE.MeshStandardMaterial({color:0xe4e4e0, roughness:.8});
+  const A = (geo, mat, x,y,z, rx=0,ry=0,rz=0)=>{ const m = new THREE.Mesh(geo, mat);
+    m.position.set(x,y,z); m.rotation.set(rx,ry,rz); m.castShadow = true; g.add(m); return m; };
+  switch(heroI){
+    case 0:   // 燼：刺髮＋頭帶
+      A(new THREE.BoxGeometry(.34,.05,.34), mA, 0,1.735,0);
+      for (let i=0;i<4;i++) A(new THREE.ConeGeometry(.035,.1,4),
+        new THREE.MeshStandardMaterial({color:0x8a4a22, roughness:.8}), -.09+i*.06, 1.84, rand(-.04,.04), rand(-.3,.3));
+      break;
+    case 1:   // 磐石：厚重大盔＋側甲＋下顎帶
+      A(new THREE.SphereGeometry(.2,12,8,0,Math.PI*2,0,Math.PI/1.7), mH, 0,1.72,0);
+      A(new THREE.BoxGeometry(.05,.12,.24), mH, -.185,1.68,0);
+      A(new THREE.BoxGeometry(.05,.12,.24), mH,  .185,1.68,0);
+      A(new THREE.BoxGeometry(.34,.035,.12), mH, 0,1.76,.16);
+      break;
+    case 2:   // 鷹眼：棒球帽＋右眼瞄準鏡
+      A(new THREE.SphereGeometry(.17,12,8,0,Math.PI*2,0,Math.PI/2), mH, 0,1.72,0);
+      A(new THREE.BoxGeometry(.26,.025,.16), mH, 0,1.725,.2);
+      A(new THREE.BoxGeometry(.07,.07,.04), mD, .07,1.7,.15);
+      A(new THREE.CylinderGeometry(.025,.025,.03,8), mA, .07,1.7,.17, Math.PI/2);
+      break;
+    case 3:   // 白芷：白髮髻＋醫療十字（不戴盔）
+      A(new THREE.SphereGeometry(.165,12,8,0,Math.PI*2,0,Math.PI/1.9), mW, 0,1.71,-.01);
+      A(new THREE.SphereGeometry(.07,8,6), mW, 0,1.86,-.08);
+      A(new THREE.BoxGeometry(.07,.02,.02), mA, .12,1.78,.06);
+      A(new THREE.BoxGeometry(.02,.07,.02), mA, .12,1.78,.06);
+      break;
+    case 4:   // 雷管：毛帽＋額頭護目鏡
+      A(new THREE.CylinderGeometry(.17,.18,.14,10), mH, 0,1.77,0);
+      A(new THREE.BoxGeometry(.26,.06,.05), mD, 0,1.72,.15);
+      A(new THREE.BoxGeometry(.09,.05,.03), mA, -.06,1.72,.17);
+      A(new THREE.BoxGeometry(.09,.05,.03), mA,  .06,1.72,.17);
+      break;
+    case 5:   // 影歌：兜帽＋面罩
+      A(new THREE.ConeGeometry(.21,.3,8), mH, 0,1.79,-.02);
+      A(new THREE.SphereGeometry(.185,10,8,0,Math.PI*2,0,Math.PI/1.8), mH, 0,1.7,-.02);
+      A(new THREE.BoxGeometry(.2,.09,.06), mD, 0,1.62,.13);
+      break;
+    case 6:   // 蠻牛：莫霍克（不戴盔）
+      A(new THREE.BoxGeometry(.05,.13,.3), mA, 0,1.85,0);
+      A(new THREE.BoxGeometry(.28,.04,.05), mD, 0,1.63,.15);
+      break;
+    case 7:   // 守望：全罩面甲＋發光橫視窗
+      A(new THREE.SphereGeometry(.19,12,9,0,Math.PI*2,0,Math.PI/1.45), mH, 0,1.7,0);
+      A(new THREE.BoxGeometry(.24,.045,.04), mA, 0,1.7,.165);
+      break;
+    case 8:   // 宗師：髮髻＋長鬚（不戴盔）
+      A(new THREE.SphereGeometry(.06,8,6), mW, 0,1.88,-.02);
+      A(new THREE.SphereGeometry(.16,12,8,0,Math.PI*2,0,Math.PI/2), mW, 0,1.72,-.01);
+      A(new THREE.BoxGeometry(.14,.22,.05), mW, 0,1.5,.12, .12);
+      break;
+    case 9:   // 福星：紳士帽＋金帽帶
+      A(new THREE.CylinderGeometry(.24,.25,.02,14), mH, 0,1.73,0);
+      A(new THREE.CylinderGeometry(.15,.16,.14,12), mH, 0,1.8,0);
+      A(new THREE.CylinderGeometry(.155,.165,.035,12), mA, 0,1.755,0);
+      break;
+  }
+  return g;
+}
 function makeAvatar(slot){
   // 士兵模型 v2：分節四肢、戰術背心與彈袋、頭盔護目鏡、背包、屬性徽章、隊伍臂章
   const g = new THREE.Group();
@@ -1692,9 +1896,7 @@ function makeAvatar(slot){
   // ---- 頭部：頸/頭/頭盔/盔沿/護目鏡 ----
   const neck = P(new THREE.Mesh(new THREE.CylinderGeometry(.06,.075,.09,8), matSkin)); neck.position.y = 1.57;
   const head = P(new THREE.Mesh(new THREE.SphereGeometry(.15,12,10), matSkin), 'head'); head.position.y = 1.69;
-  const helm = P(new THREE.Mesh(new THREE.SphereGeometry(.175,12,8,0,Math.PI*2,0,Math.PI/1.85), matHelm), 'head'); helm.position.y = 1.71;
-  const brim = P(new THREE.Mesh(new THREE.BoxGeometry(.3,.03,.1), matHelm)); brim.position.set(0,1.72,.16);
-  const gog  = P(new THREE.Mesh(new THREE.BoxGeometry(.24,.055,.03), matGear)); gog.position.set(0,1.7,.15);
+  g.add(heroHeadgearGroup(slot.hero||0));   // 角色專屬頭部裝備（頭帶/大盔/棒球帽/髮髻/兜帽/莫霍克/面甲/長鬚/紳士帽）
   // 隊友名牌可透視、敵方名牌會被牆擋住（避免穿牆透視）
   const isAlly = slots[myIdx] && slot.team === slots[myIdx].team;
   const np = nameSprite(slot.name, team==='red'?'#ff8a7e':'#8ec4ff', isAlly); np.position.y=2.2; g.add(np);
@@ -1948,6 +2150,9 @@ function updateLocal(dt){
                            + vmSprint*0.28 - vmCast*0.35;
     viewmodel.rotation.x = 0.02 + vmSwayY*2.2 - vmDraw*1.0 - hol*1.1 - rl*0.5
                            - vmSprint*0.35 + vmKick*0.06;
+    // 槍皮動態特效（鎏金閃輝/餘燼/寒霧/玉環/電弧）
+    const skFX = viewmodel.userData.skinFX;
+    if (skFX && skFX.length) for (const f of skFX) f(dt);
   }
 
   // 開火 / 換彈
@@ -2332,6 +2537,7 @@ function rebuildViewmodel(){
       break;
   }
   B(.044,.011,.05, M.elem, 0,.088,-.02);             // 屬性紋章（機匣頂）
+  addSkinDecor(sk, len);                             // 槍皮專屬造型件＋動態特效
   if (muzzleSprite){
     muzzleSprite.position.set(0.22, -0.19, -0.38-(len+0.1)*0.8);
     muzzleSprite.material.color = new THREE.Color(e.color).lerp(new THREE.Color(0xffffff), 0.55);
@@ -2341,6 +2547,84 @@ function rebuildViewmodel(){
   viewmodel.rotation.x = 0.02;
   viewmodel.scale.setScalar(0.8);
   if (flashLight) flashLight.color.set(e.color);
+}
+
+/* ---------- 槍皮造型件與動態特效：每款皮有專屬配件與持續演出，不只是換色 ---------- */
+function addSkinDecor(sk, len){
+  const F = [];
+  viewmodel.userData.skinFX = F;
+  if (!sk.fx) return;
+  const zs = [-0.16, -0.3, -0.44].map(z=> Math.max(z, -len-0.05));   // 沿槍身的三個裝飾節點
+  const add = (mesh, x,y,z, rx=0,ry=0,rz=0)=>{ mesh.position.set(x,y,z); mesh.rotation.set(rx,ry,rz);
+    viewmodel.add(mesh); return mesh; };
+  const spr = (color, s)=>{ const p = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color,
+      transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+    p.scale.set(s, s, 1); viewmodel.add(p); return p; };
+  if (sk.fx==='gold'){          // 曜金龍紋：龍脊鰭刃＋鎏金閃輝沿槍身滑動
+    const mFin = new THREE.MeshStandardMaterial({color:0xffd45e, emissive:0xb98a1f, emissiveIntensity:.5, metalness:.9, roughness:.2});
+    zs.forEach((z,i)=> add(new THREE.Mesh(new THREE.ConeGeometry(.02, .075-.015*i, 4), mFin), 0, .1, z));
+    const glint = spr(0xffe9a0, .16);
+    F.push(dt=>{
+      const k = (now()*.7)%1;
+      glint.position.set(0, .085, -.1 - k*(len*.95));
+      glint.material.opacity = Math.sin(k*Math.PI)*.95;
+      glint.material.rotation += dt*3;
+    });
+  } else if (sk.fx==='ember'){  // 緋獄魔燄：熔岩魔紋呼吸＋餘燼飄升
+    const mRune = new THREE.MeshStandardMaterial({color:0xff4655, emissive:0xff2233, emissiveIntensity:1.4});
+    zs.forEach(z=>{
+      add(new THREE.Mesh(new THREE.BoxGeometry(.005,.022,.07), mRune),  .033, .03, z);
+      add(new THREE.Mesh(new THREE.BoxGeometry(.005,.022,.07), mRune), -.033, .03, z);
+    });
+    const embers = zs.map(z=>{ const e2 = spr(0xff7a45, .05);
+      e2.position.set(rand(-.02,.02), .05, z); e2.userData = {z0:z, ph:Math.random()}; return e2; });
+    F.push(dt=>{
+      for (const e2 of embers){
+        e2.userData.ph += dt*.9;
+        if (e2.userData.ph > 1){ e2.userData.ph = 0; e2.position.x = rand(-.03,.03); }
+        e2.position.y = .05 + e2.userData.ph*.11;
+        e2.position.z = e2.userData.z0;
+        e2.material.opacity = 1 - e2.userData.ph;
+      }
+      mRune.emissiveIntensity = 1.1 + Math.sin(now()*5)*.5;
+    });
+  } else if (sk.fx==='frost'){  // 寒霜冰晶：槍身結晶＋寒霧呼吸
+    const mIce = new THREE.MeshStandardMaterial({color:0xdff4ff, emissive:0x9fd8f0, emissiveIntensity:.55,
+      transparent:true, opacity:.85, roughness:.1});
+    zs.forEach((z,i)=>{
+      add(new THREE.Mesh(new THREE.OctahedronGeometry(.03-.004*i), mIce),  .042, .06, z, rand(0,1), rand(0,1));
+      add(new THREE.Mesh(new THREE.OctahedronGeometry(.022), mIce), -.038, .045, z-.05, rand(0,1));
+    });
+    const mist = spr(0xbfeaff, .24); mist.position.set(0, .05, -.3);
+    F.push(dt=>{
+      mist.material.opacity = .16 + Math.sin(now()*1.8)*.1;
+      mist.material.rotation += dt*.4;
+    });
+  } else if (sk.fx==='jade'){   // 翡翠靈蛇：玉環纏繞緩轉＋起伏
+    const mJ = new THREE.MeshStandardMaterial({color:0x4ec9a5, emissive:0x1f8a6a, emissiveIntensity:.8,
+      transparent:true, opacity:.88, roughness:.25});
+    const rings = zs.map(z=> add(new THREE.Mesh(new THREE.TorusGeometry(.05,.008,6,16), mJ), 0, .03, z));
+    F.push(dt=>{
+      rings.forEach((r2,i)=>{
+        r2.rotation.z += dt*(1.4 + i*.6);
+        r2.position.y = .03 + Math.sin(now()*2 + i*2.1)*.008;
+      });
+    });
+  } else if (sk.fx==='volt'){   // 夜紫雷髓：雷髓線圈＋電弧亂竄
+    const mCoil = new THREE.MeshStandardMaterial({color:0x9a6bff, emissive:0x7a3bff, emissiveIntensity:1.2});
+    zs.forEach(z=> add(new THREE.Mesh(new THREE.TorusGeometry(.045,.006,4,10), mCoil), 0, .03, z, 0, 0, rand(0,1)));
+    const sp1 = spr(0xd8b4ff, .09), sp2 = spr(0xffffff, .055);
+    sp1.material.opacity = 0; sp2.material.opacity = 0;
+    F.push(dt=>{
+      if (Math.random() < .22){
+        sp1.position.set(rand(-.035,.035), .03 + rand(0,.05), zs[Math.floor(Math.random()*zs.length)] + rand(-.05,.05));
+        sp1.material.opacity = rand(.5,1);
+      } else sp1.material.opacity *= .7;
+      if (Math.random() < .12){ sp2.position.copy(sp1.position); sp2.material.opacity = 1; }
+      else sp2.material.opacity *= .55;
+      mCoil.emissiveIntensity = 1 + Math.random()*.8;
+    });
+  }
 }
 
 /* ------------------------- 主機端：傷害裁決 ------------------------- */

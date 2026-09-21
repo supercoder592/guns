@@ -57,6 +57,7 @@
   @keyframes mfloat{0%{transform:translateY(0) rotate(-6deg);opacity:0}
     12%{opacity:.16}80%{opacity:.1}100%{transform:translateY(-108vh) rotate(8deg);opacity:0}}
   #lobby .gtitle,#lobby .gsub,#menuMain,#menuTabs,#menuPanes{position:relative;z-index:1}
+  #lobby>*{flex-shrink:0} /* 內容過高時不得壓縮子區塊（會把角色卡頂進分頁列後面），改由 #lobby 捲動 */
   /* 主畫面版型：左模式｜中 3D 展示｜右連線；底部分頁 */
   #menuMain{display:flex;gap:16px;align-items:stretch;justify-content:center;width:min(1020px,96vw)}
   .mpanel{background:rgba(12,16,24,.82);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(8px);
@@ -101,13 +102,15 @@
   .hbtn{width:86px;padding:8px 4px 7px;border:1.5px solid rgba(255,255,255,.13);background:rgba(255,255,255,.04);
     text-align:center;color:#cfd9e8;transition:all .15s;
     clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
-  .hbtn .hi{font-size:21px;filter:drop-shadow(0 0 8px var(--ac))}
-  .hbtn .hn{font-size:13px;font-weight:800;margin-top:2px;letter-spacing:.1em}
+  .hbtn .hp{width:60px;height:60px;display:block;margin:0 auto;
+    clip-path:polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px);
+    border-bottom:2px solid var(--ac)}
+  .hbtn .hn{font-size:13px;font-weight:800;margin-top:4px;letter-spacing:.1em}
   .hbtn .ht{font-size:10px;color:#7d90ad;margin-top:1px}
   .hbtn.sel{background:rgba(255,255,255,.1);border-color:var(--ac);transform:translateY(-3px);
     box-shadow:0 6px 16px -6px var(--ac);color:#fff}
   #heroRowRoom .hbtn{width:66px;padding:5px 2px}
-  #heroRowRoom .hbtn .hi{font-size:16px}
+  #heroRowRoom .hbtn .hp{width:42px;height:42px}
   #heroRowRoom .hbtn .hn{font-size:11px}
   #heroRowRoom .hbtn .ht{display:none}
   #skinRow{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:2px 0 10px}
@@ -115,7 +118,9 @@
     text-align:center;color:#cfd9e8;transition:all .15s;
     clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
   .sbtn .sw{height:20px;margin:0 4px 5px;clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px)}
-  .sbtn .sn{font-size:11px;letter-spacing:.08em}
+  .sbtn{width:100px}
+  .sbtn .sn{font-size:12px;font-weight:800;letter-spacing:.08em}
+  .sbtn .sf{font-size:9.5px;color:#7d90ad;margin-top:1px}
   .sbtn.sel{border-color:#ffd45e;background:rgba(255,255,255,.1);transform:translateY(-3px)}
   #modeRow{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:2px 0 8px}
   .mbtn{padding:8px 13px;border:1.5px solid rgba(255,255,255,.13);background:rgba(255,255,255,.04);
