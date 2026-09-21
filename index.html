@@ -56,7 +56,41 @@
     text-shadow:0 0 26px currentColor;animation:mfloat linear infinite}
   @keyframes mfloat{0%{transform:translateY(0) rotate(-6deg);opacity:0}
     12%{opacity:.16}80%{opacity:.1}100%{transform:translateY(-108vh) rotate(8deg);opacity:0}}
-  #lobby .panel,#lobby .gtitle,#lobby .gsub{position:relative;z-index:1}
+  #lobby .gtitle,#lobby .gsub,#menuMain,#menuTabs,#menuPanes{position:relative;z-index:1}
+  /* 主畫面版型：左模式｜中 3D 展示｜右連線；底部分頁 */
+  #menuMain{display:flex;gap:16px;align-items:stretch;justify-content:center;width:min(1020px,96vw)}
+  .mpanel{background:rgba(12,16,24,.82);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(8px);
+    padding:16px 18px;clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px)}
+  #menuLeft{width:186px;flex-shrink:0}
+  #menuLeft #modeRow{flex-direction:column;gap:7px;margin:2px 0 8px}
+  #menuLeft .mbtn{width:100%;box-sizing:border-box;text-align:left;padding:9px 13px;display:flex;justify-content:space-between;align-items:baseline}
+  #menuLeft .mbtn .mt{margin:0}
+  #menuCenter{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0;position:relative}
+  #menuCv{width:min(400px,100%);height:460px;filter:drop-shadow(0 22px 30px rgba(0,0,0,.5))}
+  #prevName{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap;
+    background:rgba(10,14,20,.72);border:1px solid rgba(255,255,255,.12);padding:7px 22px;
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+  #prevName b{font-size:17px;letter-spacing:.2em}
+  #prevName small{color:#8296b3;margin-left:8px;font-size:11px}
+  #prevName span{margin-left:12px;font-size:13px;font-weight:700}
+  #prevName em{font-style:normal;color:#c9b675;margin-left:10px;font-size:11px;letter-spacing:.1em}
+  #menuRight{width:236px;flex-shrink:0}
+  #menuTabs{display:flex;gap:10px;margin:16px 0 0;width:min(1020px,96vw)}
+  .mtab{flex:1;text-align:center;padding:11px 0;font-weight:800;letter-spacing:.4em;font-size:15px;color:#8ea3c4;cursor:pointer;
+    background:rgba(12,16,24,.82);border:1px solid rgba(255,255,255,.1);transition:all .15s;
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+  .mtab:hover{color:#fff}
+  .mtab.sel{background:linear-gradient(100deg,rgba(255,70,85,.28),rgba(61,214,195,.18));color:#fff;border-color:#ff4655}
+  #menuPanes{width:min(1020px,96vw);box-sizing:border-box;min-height:132px;margin-top:8px;display:flex;align-items:center;justify-content:center}
+  #paneHero,#paneChar,#paneSkin{width:100%}
+  @media (max-width:900px){
+    #menuMain{flex-direction:column;align-items:stretch}
+    #menuLeft{width:auto}
+    #menuLeft #modeRow{flex-direction:row;flex-wrap:wrap}
+    #menuLeft .mbtn{width:auto;text-align:center;display:block;padding:8px 12px}
+    #menuCv{height:300px}
+    #menuRight{width:auto}
+  }
   .secline{display:flex;align-items:center;gap:9px;margin:14px 0 9px}
   .secline h3{margin:0;font-size:14px}
   .secline h3 small{color:#5b6c86;letter-spacing:.05em;font-size:11px;margin-left:6px}
@@ -293,38 +327,47 @@
 <body>
 <canvas id="c3d"></canvas>
 
-<!-- ============ 大廳 ============ -->
+<!-- ============ 大廳（左：模式｜中：3D 角色展示｜右：連線；底部分頁：角色/元素/槍械） ============ -->
 <div id="lobby" class="overlay">
   <div id="menuFx"></div>
   <div class="gtitle">五 行 槍 神 錄</div>
   <div class="gsub">WUXING STRIKE ─ 12 行屬性 × 10 名角色 × 5 種模式 · 5v5 連線槍戰</div>
-  <div class="panel">
-    <div class="secline"><span class="secbar"></span><h3>作 戰 代 號</h3></div>
-    <div class="row"><input class="ipt" id="nameIpt" maxlength="10" placeholder="輸入你的名字"></div>
-    <div class="secline"><span class="secbar"></span><h3>選 擇 角 色<small>（各有專屬被動）</small></h3></div>
-    <div id="heroRow"></div>
-    <div class="pickdesc" id="heroDesc"></div>
-    <div class="secline"><span class="secbar"></span><h3>命 定 之 行<small>（屬性決定技能與大招）</small></h3></div>
-    <div id="charRow"></div>
-    <div class="secline"><span class="secbar"></span><h3>槍 皮</h3></div>
-    <div id="skinRow"></div>
-    <div class="secline"><span class="secbar"></span><h3>作 戰 模 式<small>（皆 5 分鐘內速戰）</small></h3></div>
-    <div id="modeRow"></div>
-    <div class="pickdesc" id="modeDesc"></div>
-    <div class="row" style="margin-top:14px"><button class="btn pri" style="flex:1" id="btnCreate">建立房間（房主）</button></div>
-    <div class="or">─── 或 ───</div>
-    <div class="row">
-      <input class="ipt" id="codeIpt" maxlength="5" placeholder="輸入 5 位房號" style="text-transform:uppercase;letter-spacing:.3em">
-      <button class="btn grn" id="btnJoin">加入房間</button>
+  <div id="menuMain">
+    <div id="menuLeft" class="mpanel">
+      <div class="secline"><span class="secbar"></span><h3>模 式</h3></div>
+      <div id="modeRow"></div>
+      <div class="pickdesc" id="modeDesc"></div>
     </div>
-    <div class="or">─── 或 ───</div>
-    <div class="row"><button class="btn gld" style="flex:1" id="btnSolo">單人開戰（電腦補滿 5v5）</button></div>
-    <div class="note">
-      連線採 P2P：房主建房取得房號，隊友輸入房號即可加入；人數不足自動以 AI 補齊。<br>
-      十二行屬性：金木水火土＋冰雷＋風暗光＋時／音。子彈落點改造戰場、屬性反應鏈、岩牆掩體、屬性手雷。<br>
-      <kbd>WASD</kbd> 移動 <kbd>Shift</kbd> 疾跑 <kbd>Ctrl/C</kbd> 蹲/滑壘 <kbd>Space</kbd> 跳 <kbd>R</kbd> 換彈 <kbd>1-5</kbd> 武器 <kbd>E</kbd> 技能 <kbd>Q</kbd> 大招 <kbd>G</kbd> 手雷 <kbd>Tab</kbd> 計分板 · 右鍵開鏡
+    <div id="menuCenter">
+      <canvas id="menuCv" width="400" height="460"></canvas>
+      <div id="prevName"></div>
     </div>
-    <div class="note" style="margin-top:8px"><a href="classic.html" style="color:#4ea1ff">→ 玩 2D 經典版</a></div>
+    <div id="menuRight" class="mpanel">
+      <div class="secline"><span class="secbar"></span><h3>作 戰 代 號</h3></div>
+      <input class="ipt" id="nameIpt" maxlength="10" placeholder="輸入你的名字" style="width:100%">
+      <button class="btn gld" id="btnSolo" style="width:100%;margin-top:14px">單 人 開 戰</button>
+      <button class="btn pri" id="btnCreate" style="width:100%;margin-top:9px">建 立 房 間</button>
+      <div class="or">─── 或加入 ───</div>
+      <div class="row" style="margin-bottom:0">
+        <input class="ipt" id="codeIpt" maxlength="5" placeholder="房號" style="text-transform:uppercase;letter-spacing:.3em;min-width:0">
+        <button class="btn grn" id="btnJoin">加入</button>
+      </div>
+      <div class="note" style="font-size:11px">
+        P2P 連線：房主建房取房號給隊友；人數不足 AI 補齊。<br>
+        <kbd>WASD</kbd>移動 <kbd>Shift</kbd>疾跑 <kbd>Ctrl</kbd>蹲/滑壘 <kbd>R</kbd>換彈 <kbd>E</kbd>技能 <kbd>Q</kbd>大招 <kbd>G</kbd>手雷 · 右鍵開鏡<br>
+        <a href="classic.html" style="color:#4ea1ff">→ 2D 經典版</a>
+      </div>
+    </div>
+  </div>
+  <div id="menuTabs">
+    <div class="mtab sel" data-tab="hero">角 色</div>
+    <div class="mtab" data-tab="char">元 素</div>
+    <div class="mtab" data-tab="skin">槍 械</div>
+  </div>
+  <div id="menuPanes" class="mpanel">
+    <div id="paneHero"><div id="heroRow"></div><div class="pickdesc" id="heroDesc"></div></div>
+    <div id="paneChar" class="hidden"><div id="charRow"></div></div>
+    <div id="paneSkin" class="hidden"><div id="skinRow"></div></div>
   </div>
 </div>
 

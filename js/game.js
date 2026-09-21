@@ -258,6 +258,7 @@ function pickChar(i){
   document.querySelectorAll('.cbtn').forEach(x=> x.classList.toggle('sel', +x.dataset.ci===i));
   if (netMode==='guest' && conns[0]) send(conns[0], {t:'char', c:i});   // 房間中即時換屬性
   if (netMode==='host'){ slots[myIdx].char = i; roomBroadcast(); }
+  rebuildMenuSoldier();
 }
 function pickHero(i){
   selHero = i;
@@ -266,6 +267,7 @@ function pickHero(i){
   const hd = $('heroDesc'); if (hd) hd.textContent = `${HEROES[i].name}‧${HEROES[i].title} — 被動：${HEROES[i].desc}`;
   if (netMode==='guest' && conns[0]) send(conns[0], {t:'hero', h:i});
   if (netMode==='host'){ slots[myIdx].hero = i; roomBroadcast(); }
+  rebuildMenuSoldier();
 }
 function pickSkin(i){
   selSkin = i;
@@ -274,6 +276,7 @@ function pickSkin(i){
   if (netMode==='guest' && conns[0]) send(conns[0], {t:'skin', k:i});
   if (netMode==='host'){ slots[myIdx].skin = i; roomBroadcast(); }
   if (started && slots[myIdx]){ slots[myIdx].skin = i; rebuildViewmodel(); }
+  rebuildMenuSoldier();
 }
 function pickMode(id){
   selMode = id;
@@ -357,6 +360,105 @@ pickHero(selHero); pickMode(selMode);   // 初始化描述列
     }
   }
 }
+// 主畫面分頁：角色／元素／槍械
+document.querySelectorAll('.mtab').forEach(t=>{
+  t.onclick = ()=>{
+    document.querySelectorAll('.mtab').forEach(x=> x.classList.toggle('sel', x===t));
+    $('paneHero').classList.toggle('hidden', t.dataset.tab!=='hero');
+    $('paneChar').classList.toggle('hidden', t.dataset.tab!=='char');
+    $('paneSkin').classList.toggle('hidden', t.dataset.tab!=='skin');
+  };
+});
+
+/* ---------- 主畫面 3D 角色展示：隨選擇即時變裝、緩慢轉身 ---------- */
+function buildSoldierMesh(heroI, charI, skinI){
+  const hr = HEROES[heroI]||HEROES[0], e = EL[CHARS[charI].el], sk = SKINS[skinI]||SKINS[0];
+  const g = new THREE.Group();
+  const matBody = new THREE.MeshStandardMaterial({color:0x59614f, roughness:.85});
+  const matSkin = new THREE.MeshStandardMaterial({color:0xd7a684, roughness:.7});
+  const matGear = new THREE.MeshStandardMaterial({color:0x22252a, roughness:.55, metalness:.25});
+  const matGear2= new THREE.MeshStandardMaterial({color:0x31383f, roughness:.65, metalness:.12});
+  const matBoot = new THREE.MeshStandardMaterial({color:0x16171b, roughness:.92});
+  const matElem = new THREE.MeshStandardMaterial({color:e.color, emissive:e.color, emissiveIntensity:.9, roughness:.4});
+  const matHelm = new THREE.MeshStandardMaterial({color:hr.helm, roughness:.6, metalness:.15});
+  const matAcc  = new THREE.MeshStandardMaterial({color:hr.accent, emissive:hr.accent, emissiveIntensity:.4, roughness:.5});
+  const matGun  = new THREE.MeshStandardMaterial({color:sk.steel, roughness:.35, metalness:.6,
+    emissive:sk.glow||0x000000, emissiveIntensity:sk.glow?.3:0});
+  const B = (geo,mat,x,y,z,rx=0,ry=0,rz=0)=>{ const m = new THREE.Mesh(geo,mat);
+    m.position.set(x,y,z); m.rotation.set(rx,ry,rz); g.add(m); return m; };
+  for (const s of [-1,1]){   // 腿
+    B(new THREE.BoxGeometry(.17,.44,.2), matBody, .115*s, .7, 0);
+    B(new THREE.CylinderGeometry(.068,.06,.4,8), matGear2, .115*s, .26, 0);
+    B(new THREE.BoxGeometry(.15,.11,.27), matBoot, .115*s, .04, .045);
+  }
+  B(new THREE.BoxGeometry(.4,.15,.24), matGear, 0,.97,0);          // 腰帶
+  B(new THREE.BoxGeometry(.46,.5,.26), matBody, 0,1.28,0);         // 軀幹
+  B(new THREE.BoxGeometry(.48,.4,.3), matGear, 0,1.3,0);           // 背心
+  B(new THREE.BoxGeometry(.5,.045,.31), matAcc, 0,1.47,0);         // 角色識別條
+  for (let i=0;i<3;i++) B(new THREE.BoxGeometry(.1,.13,.05), matGear2, -.14+i*.14, 1.19, .175);
+  B(new THREE.BoxGeometry(.15,.09,.21), matElem, -.31,1.52,0);     // 屬性肩甲
+  B(new THREE.BoxGeometry(.15,.09,.21), matElem, .31,1.52,0);
+  B(new THREE.BoxGeometry(.13,.32,.14), matBody, .28,1.37,.1, -.9);   // 持槍雙臂
+  B(new THREE.BoxGeometry(.11,.27,.12), matSkin, .25,1.28,.34, -1.5);
+  B(new THREE.BoxGeometry(.13,.3,.14), matBody, -.28,1.39,.12, -.9,0,-.5);
+  B(new THREE.BoxGeometry(.1,.26,.11), matSkin, -.1,1.3,.38, -1.4,0,-.6);
+  B(new THREE.BoxGeometry(.07,.11,.72), matGun, .1,1.33,.42);      // 槍（槍皮色）
+  B(new THREE.BoxGeometry(.05,.15,.07), matGear2, .1,1.23,.4, .25);
+  B(new THREE.CylinderGeometry(.06,.075,.09,8), matSkin, 0,1.57,0);
+  B(new THREE.SphereGeometry(.15,14,12), matSkin, 0,1.69,0);
+  B(new THREE.SphereGeometry(.175,14,10,0,Math.PI*2,0,Math.PI/1.85), matHelm, 0,1.71,0);  // 角色頭盔
+  B(new THREE.BoxGeometry(.3,.03,.1), matHelm, 0,1.72,.16);
+  B(new THREE.BoxGeometry(.24,.055,.03), matGear, 0,1.7,.15);
+  // 展示台座＋屬性光環
+  B(new THREE.CylinderGeometry(.72,.8,.06,36),
+    new THREE.MeshStandardMaterial({color:0x1a2029, roughness:.45, metalness:.4}), 0,-.05,0);
+  B(new THREE.RingGeometry(.55,.7,40),
+    new THREE.MeshBasicMaterial({color:e.color, transparent:true, opacity:.55, side:THREE.DoubleSide}),
+    0,.0,0, -Math.PI/2);
+  return g;
+}
+var mprev = null;   // var：pick 初始化在此宣告前執行，需可提升
+function buildMenuPreview(){
+  const cv = $('menuCv');
+  if (!cv || mprev) return;
+  try{
+    const W = cv.clientWidth || 400, H = cv.clientHeight || 460;
+    const r = new THREE.WebGLRenderer({canvas:cv, alpha:true, antialias:true});
+    r.setPixelRatio(Math.min(devicePixelRatio||1, 2));
+    r.setSize(W, H, false);
+    r.outputColorSpace = THREE.SRGBColorSpace;
+    const sc = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(30, W/H, .1, 20);
+    cam.position.set(0, 1.32, 3.7);
+    cam.lookAt(0, 1.0, 0);
+    sc.add(new THREE.HemisphereLight(0xdfeaf5, 0x6a6258, 1.15));
+    const key = new THREE.DirectionalLight(0xfff0d2, 2.2); key.position.set(2,3,2); sc.add(key);
+    const rim = new THREE.DirectionalLight(0x66d9ff, 1.3); rim.position.set(-2,2,-2.5); sc.add(rim);
+    mprev = {r, sc, cam, group:null};
+    rebuildMenuSoldier();
+    const loop = ()=>{
+      if (!mprev) return;
+      requestAnimationFrame(loop);
+      if ($('lobby').classList.contains('hidden')) return;   // 只在大廳時渲染
+      if (mprev.group) mprev.group.rotation.y = Math.sin(now()*.45)*.6 + .25;
+      mprev.r.render(mprev.sc, mprev.cam);
+    };
+    loop();
+  }catch(e){ mprev = null; }
+}
+function rebuildMenuSoldier(){
+  if (!mprev) return;
+  if (mprev.group) mprev.sc.remove(mprev.group);
+  mprev.group = buildSoldierMesh(selHero, selChar, selSkin);
+  mprev.sc.add(mprev.group);
+  const nm = $('prevName');
+  if (nm){
+    const hr = HEROES[selHero], e = EL[CHARS[selChar].el], sk = SKINS[selSkin];
+    nm.innerHTML = `<b>${hr.name}</b><small>${hr.title} · ${hr.desc}</small>`+
+      `<span style="color:${e.css}">${e.glyph} ${e.name}</span><em>${sk.name}</em>`;
+  }
+}
+buildMenuPreview();
 $('nameIpt').value = localStorage.getItem('wx_name') || '';
 function myName(){
   const v = $('nameIpt').value.trim() || ('玩家'+Math.floor(Math.random()*900+100));
