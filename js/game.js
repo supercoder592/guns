@@ -101,6 +101,7 @@ const rand = (a,b)=> a + Math.random()*(b-a);
 const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
 const $ = id => document.getElementById(id);
 const now = ()=> performance.now()/1000;
+const TEX = {};   // 材質快取（宣告提前：大廳槍模預覽在世界建立前就會用到）
 const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints||0) > 0;
 if (IS_TOUCH) document.body.classList.add('touch');
 
@@ -531,40 +532,14 @@ function buildSoldierMesh(heroI, charI, skinI){
   B(new THREE.BoxGeometry(.11,.27,.12), matSkin, .25,1.28,.34, -1.5);
   B(new THREE.BoxGeometry(.13,.3,.14), matBody, -.28,1.39,.12, -.9,0,-.5);
   B(new THREE.BoxGeometry(.1,.26,.11), matSkin, -.1,1.3,.38, -1.4,0,-.6);
-  B(new THREE.BoxGeometry(.07,.11,.72), matGun, .1,1.33,.42);      // 槍（槍皮色）
-  B(new THREE.BoxGeometry(.05,.15,.07), matGear2, .1,1.23,.4, .25);
-  if (sk.fx){   // 槍皮改造套件（展示台靜態版：龍首/魔顎/冰封/蛇首/磁軌）
-    const mFx = new THREE.MeshStandardMaterial({color:sk.steel, emissive:sk.glow||0xffffff,
-      emissiveIntensity:1, transparent:true, opacity:.92});
-    const mFd = new THREE.MeshStandardMaterial({color:sk.dark, metalness:.7, roughness:.35});
-    if (sk.fx==='gold'){                    // 龍首吞槍口＋龍脊鰭刃
-      B(new THREE.BoxGeometry(.1,.08,.13), mFx, .1, 1.34, .74);
-      B(new THREE.ConeGeometry(.02,.08,4), mFd, .07, 1.41, .7, 2.1);
-      B(new THREE.ConeGeometry(.02,.08,4), mFd, .13, 1.41, .7, 2.1);
-      for (let i=0;i<3;i++) B(new THREE.ConeGeometry(.022,.08,4), mFx, .1, 1.42, .2+i*.17, .25);
-    } else if (sk.fx==='ember'){            // 魔顎獠牙環＋魔角
-      for (let i=0;i<4;i++){ const a = i/4*Math.PI*2+.4;
-        B(new THREE.ConeGeometry(.014,.07,4), mFd, .1+Math.cos(a)*.045, 1.33+Math.sin(a)*.045, .78, Math.PI/2); }
-      B(new THREE.SphereGeometry(.026,8,8), mFx, .1, 1.33, .74);
-      for (let i=0;i<2;i++) B(new THREE.ConeGeometry(.02,.09,4), mFd, .1, 1.42, .22+i*.2, .6);
-    } else if (sk.fx==='frost'){            // 整槍冰封＋冰錐冠
-      for (let i=0;i<3;i++){ const a = i/3*Math.PI*2;
-        B(new THREE.ConeGeometry(.015,.09,5), mFx, .1+Math.cos(a)*.04, 1.33+Math.sin(a)*.04, .8, Math.PI/2); }
-      B(new THREE.ConeGeometry(.026,.12,5), mFx, .1, 1.45, .2, .35);
-      for (let i=0;i<3;i++) B(new THREE.OctahedronGeometry(.03-.004*i), mFx, .1+(i%2?.045:-.045), 1.4, .3+i*.16, rand(0,1), rand(0,1));
-    } else if (sk.fx==='jade'){             // 蛇首昂於槍口＋蛇身纏繞
-      B(new THREE.BoxGeometry(.06,.045,.1), mFx, .1, 1.44, .76, .3);
-      B(new THREE.BoxGeometry(.075,.015,.07), mFx, .1, 1.42, .72, .3);
-      for (let i=0;i<4;i++) B(new THREE.TorusGeometry(.055,.014,7,14,Math.PI*1.35), i%2?mFx:mFd, .1, 1.33, .2+i*.15, 0, 0, i*1.2);
-    } else {                                // volt：磁軌雙叉＋能量核
-      B(new THREE.BoxGeometry(.016,.032,.26), mFd, .066, 1.35, .82);
-      B(new THREE.BoxGeometry(.016,.032,.26), mFd, .134, 1.35, .82);
-      B(new THREE.BoxGeometry(.009,.018,.24), mFx, .066, 1.35, .81);
-      B(new THREE.BoxGeometry(.009,.018,.24), mFx, .134, 1.35, .81);
-      B(new THREE.CylinderGeometry(.02,.02,.09,10), mFx, .1, 1.42, .2, 0, 0, Math.PI/2);
-      for (let i=0;i<2;i++) B(new THREE.TorusGeometry(.048,.008,4,10), mFx, .1, 1.33, .34+i*.16);
-    }
-  }
+  // 統一持狙擊槍：與第一人稱同款完整槍模＋槍皮改造套件（大廳槍枝預覽，特效同步演出）
+  if (!TEX.spark) buildTextures();
+  const gunFX = [];
+  const gun = buildGunModel(4, sk, e.color, gunFX);
+  gun.rotation.y = Math.PI;                  // 槍模空間 -z 朝前 → 展示台 +z 朝前
+  gun.position.set(.1, 1.315, .2);
+  g.add(gun);
+  g.userData.gunFX = gunFX;
   B(new THREE.CylinderGeometry(.06,.075,.09,8), matSkin, 0,1.57,0);
   B(new THREE.SphereGeometry(.15,14,12), matSkin, 0,1.69,0);
   g.add(heroHeadgearGroup(heroI));   // 角色專屬頭部裝備
@@ -593,23 +568,34 @@ function buildMenuPreview(){
     sc.add(new THREE.HemisphereLight(0xdfeaf5, 0x6a6258, 1.15));
     const key = new THREE.DirectionalLight(0xfff0d2, 2.2); key.position.set(2,3,2); sc.add(key);
     const rim = new THREE.DirectionalLight(0x66d9ff, 1.3); rim.position.set(-2,2,-2.5); sc.add(rim);
-    mprev = {r, sc, cam, group:null};
+    mprev = {r, sc, cam, group:null, fx:[], zoom:0};
     rebuildMenuSoldier();
+    let mlast = now();
     const loop = ()=>{
       if (!mprev) return;
       requestAnimationFrame(loop);
       if ($('lobby').classList.contains('hidden')) return;   // 只在大廳時渲染
-      if (mprev.group) mprev.group.rotation.y = Math.sin(now()*.45)*.6 + .25;
+      const t2 = now(), dt = Math.min(t2 - mlast, .1); mlast = t2;
+      // 槍械分頁：鏡頭推近特寫手中狙擊槍（槍枝預覽）
+      const pk = $('paneSkin');
+      const zt = pk && !pk.classList.contains('hidden') ? 1 : 0;
+      mprev.zoom += (zt - mprev.zoom) * Math.min(dt*5, 1);
+      const z = mprev.zoom;
+      mprev.cam.position.set(.62*z, 1.32 + .08*z, 3.7 - 2.0*z);
+      mprev.cam.lookAt(.15*z, 1.0 + .3*z, .45*z);
+      if (mprev.group) mprev.group.rotation.y = Math.sin(t2*.45)*.6*(1 - z*.7) + .25 + .32*z;
+      for (const f of mprev.fx) f(dt);                       // 槍皮動態特效同步演出
       mprev.r.render(mprev.sc, mprev.cam);
     };
     loop();
-  }catch(e){ mprev = null; }
+  }catch(e){ mprev = null; window._mperr = e.message + '\n' + (e.stack||''); }
 }
 function rebuildMenuSoldier(){
   if (!mprev) return;
   if (mprev.group) mprev.sc.remove(mprev.group);
   mprev.group = buildSoldierMesh(selHero, selChar, selSkin);
   mprev.sc.add(mprev.group);
+  mprev.fx = mprev.group.userData.gunFX || [];
   const nm = $('prevName');
   if (nm){
     const hr = HEROES[selHero], e = EL[CHARS[selChar].el], sk = SKINS[selSkin];
@@ -1009,8 +995,8 @@ function noiseOver(ctx,w,h,alpha,n=900){
   for(let i=0;i<n;i++){ ctx.fillStyle=`rgba(${Math.random()<.5?0:255},${Math.random()<.5?0:255},${Math.random()<.5?0:255},${Math.random()*alpha})`;
     ctx.fillRect(Math.random()*w, Math.random()*h, rand(1,3), rand(1,3)); }
 }
-const TEX = {};
 function buildTextures(){
+  if (TEX.spark) return;   // 已建過（大廳槍模預覽會提前建材質）
   // Valorant 式手繪地面：乾淨大石板＋柔和冷暖色斑＋收斂的細節
   TEX.ground = makeCanvasTex((c,w,h)=>{
     c.fillStyle='#84898f'; c.fillRect(0,0,w,h);
@@ -2463,11 +2449,9 @@ function buildViewmodel(){
   camera.add(muzzleSprite);
   rebuildViewmodel();
 }
-function rebuildViewmodel(){
-  while(viewmodel.children.length) viewmodel.remove(viewmodel.children[0]);
-  const e = EL[CHARS[slots[myIdx]?.char ?? selChar].el];
-  // 槍皮配色（個人外觀）
-  const sk = SKINS[slots[myIdx]?.skin ?? selSkin] || SKINS[0];
+/* 完整槍模（含槍皮改造套件與動態特效）：第一人稱與大廳槍枝預覽共用 */
+function buildGunModel(gunIdx, sk, elemColor, FX){
+  const grp = new THREE.Group();
   const gl = sk.glow || 0x000000, gi = sk.glow ? 0.16 : 0;
   const M = {
     black: new THREE.MeshStandardMaterial({color:sk.body,  roughness:.4,  metalness:.62, emissive:gl, emissiveIntensity:gi*.5}),
@@ -2476,20 +2460,20 @@ function rebuildViewmodel(){
     wood:  sk.wood ? new THREE.MeshStandardMaterial({color:sk.wood, roughness:.55, metalness:.25, emissive:gl, emissiveIntensity:gi*.6})
                    : new THREE.MeshStandardMaterial({map:TEX.wood,  roughness:.75}),
     poly:  new THREE.MeshStandardMaterial({color:sk.body, roughness:.75, metalness:.05}),
-    elem:  new THREE.MeshStandardMaterial({color:e.color, emissive:e.color, emissiveIntensity:1.1}),
+    elem:  new THREE.MeshStandardMaterial({color:elemColor, emissive:elemColor, emissiveIntensity:1.1}),
   };
   const B = (w,h,d,mat,x,y,z,rx=0,rz=0)=>{
     const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat);
     m.position.set(x,y,z); m.rotation.x = rx; m.rotation.z = rz;
-    viewmodel.add(m); return m;
+    grp.add(m); return m;
   };
   const C = (r,ln,mat,x,y,z)=>{
     const m = new THREE.Mesh(new THREE.CylinderGeometry(r,r,ln,10), mat);
     m.rotation.x = Math.PI/2; m.position.set(x,y,z);
-    viewmodel.add(m); return m;
+    grp.add(m); return m;
   };
   let len = 0.5;
-  switch (me.gun){
+  switch (gunIdx){
     case 0: // 靈息手槍：滑套、擊錘、握把、扳機護弓、前後準星
       len = 0.3;
       B(.052,.05,.26, M.steel, 0,.045,-.12);        // 滑套
@@ -2558,7 +2542,19 @@ function rebuildViewmodel(){
       break;
   }
   B(.044,.011,.05, M.elem, 0,.088,-.02);             // 屬性紋章（機匣頂）
-  addSkinDecor(sk, len);                             // 槍皮專屬造型件＋動態特效
+  addSkinDecor(grp, sk, len, FX || []);              // 槍皮改造套件＋動態特效
+  grp.userData.len = len;
+  return grp;
+}
+function rebuildViewmodel(){
+  while(viewmodel.children.length) viewmodel.remove(viewmodel.children[0]);
+  const e = EL[CHARS[slots[myIdx]?.char ?? selChar].el];
+  const sk = SKINS[slots[myIdx]?.skin ?? selSkin] || SKINS[0];
+  const F = [];
+  viewmodel.userData.skinFX = F;
+  const grp = buildGunModel(me.gun, sk, e.color, F);
+  viewmodel.add(grp);
+  const len = grp.userData.len;
   if (muzzleSprite){
     muzzleSprite.position.set(0.22, -0.19, -0.38-(len+0.1)*0.8);
     muzzleSprite.material.color = new THREE.Color(e.color).lerp(new THREE.Color(0xffffff), 0.55);
@@ -2571,17 +2567,15 @@ function rebuildViewmodel(){
 }
 
 /* ---------- 槍皮整槍改造套件：不受原槍造型限制，每款皮重塑輪廓＋持續動態演出 ---------- */
-function addSkinDecor(sk, len){
-  const F = [];
-  viewmodel.userData.skinFX = F;
+function addSkinDecor(grp, sk, len, F){
   if (!sk.fx) return;
   const zm = -(len + .02);                       // 槍口改裝件中心
   const z0 = len > .7 ? -.36 : -.13;             // 槍頂脊飾起點（狙擊鏡後方避開鏡組）
   const add = (mesh, x,y,z, rx=0,ry=0,rz=0)=>{ mesh.position.set(x,y,z); mesh.rotation.set(rx,ry,rz);
-    viewmodel.add(mesh); return mesh; };
+    grp.add(mesh); return mesh; };
   const spr = (color, s)=>{ const p = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color,
       transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
-    p.scale.set(s, s, 1); viewmodel.add(p); return p; };
+    p.scale.set(s, s, 1); grp.add(p); return p; };
   const spine = (n, mk)=>{ for (let i=0;i<n;i++) mk(z0 + (zm+.12-z0)*(i/(n-1||1)), i, i/(n-1||1)); };
 
   if (sk.fx==='gold'){          // 曜金龍紋 → 金龍纏槍：龍首吞槍口、龍脊鰭刃、龍尾翹起
@@ -2676,7 +2670,7 @@ function addSkinDecor(sk, len){
     hAdd(new THREE.SphereGeometry(.011,8,8), mEye, -.026, .015, -.045);
     const tongue = hAdd(new THREE.BoxGeometry(.006,.004,.06), mEye, 0, -.008, -.1);        // 吐信
     head.position.set(0, .1, zm+.02); head.rotation.x = .25;
-    viewmodel.add(head);
+    grp.add(head);
     const coils = [];                                                                      // 蛇身：半環節節纏繞槍身
     for (let i=0;i<5;i++){ const z = z0 - .02 + (zm+.16-z0)*(i/4.5);
       const c2 = add(new THREE.Mesh(new THREE.TorusGeometry(.05,.013,7,14,Math.PI*1.35), i%2?mJ:mJd),
