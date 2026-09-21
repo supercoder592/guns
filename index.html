@@ -23,25 +23,30 @@
 
   /* ===== 大廳 ===== */
   #lobby{background:
+    linear-gradient(115deg,transparent 40%,rgba(255,70,85,.05) 46%,transparent 53%),
+    linear-gradient(62deg,transparent 55%,rgba(61,214,195,.045) 61%,transparent 68%),
     linear-gradient(rgba(6,8,12,.78),rgba(6,8,12,.92)),
-    radial-gradient(ellipse at 50% 20%,#1a2434 0%,#07090d 70%);overflow-y:auto;padding:30px 16px}
-  .gtitle{font-size:clamp(38px,6vw,72px);font-weight:900;letter-spacing:.18em;
+    radial-gradient(ellipse at 50% 20%,#1a2434 0%,#07090d 70%);overflow-y:auto;padding:18px 16px}
+  .gtitle{font-size:clamp(30px,4.6vw,54px);font-weight:900;letter-spacing:.18em;
     background:linear-gradient(100deg,var(--metal),var(--wood),var(--water),var(--fire),var(--earth),var(--metal));
     background-size:220% 100%;animation:gsheen 9s linear infinite;
     -webkit-background-clip:text;background-clip:text;color:transparent;text-align:center;
     filter:drop-shadow(0 3px 26px rgba(140,190,255,.4))}
   @keyframes gsheen{to{background-position:220% 0}}
-  .gsub{color:#8296b3;letter-spacing:.4em;font-size:12.5px;margin:8px 0 26px;text-align:center}
+  .gsub{color:#8296b3;letter-spacing:.4em;font-size:12px;margin:6px 0 16px;text-align:center}
   .panel{background:rgba(12,16,24,.88);border:1px solid rgba(255,255,255,.1);
     clip-path:polygon(18px 0,100% 0,100% calc(100% - 18px),calc(100% - 18px) 100%,0 100%,0 18px);
     padding:26px 30px;width:min(640px,96vw);backdrop-filter:blur(8px)}
   .panel h3{font-size:15px;letter-spacing:.2em;color:#9fb2d0;margin-bottom:12px}
   .row{display:flex;gap:10px;margin-bottom:14px}
-  .ipt{flex:1;background:#0b0f16;border:1px solid #2c3a52;border-radius:9px;color:#fff;
+  .ipt{flex:1;background:#0b0f16;border:1px solid #2c3a52;border-radius:0;color:#fff;
+    clip-path:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px);
     padding:12px 14px;font-size:15px;letter-spacing:.06em;outline:none}
   .ipt:focus{border-color:#4ea1ff}
-  .btn{border:none;border-radius:9px;padding:12px 22px;font-size:15px;font-weight:700;letter-spacing:.12em;color:#fff;transition:filter .15s}
-  .btn:hover{filter:brightness(1.18)}
+  .btn{border:none;border-radius:0;padding:12px 22px;font-size:15px;font-weight:700;letter-spacing:.12em;color:#fff;
+    clip-path:polygon(9px 0,100% 0,100% calc(100% - 9px),calc(100% - 9px) 100%,0 100%,0 9px);
+    transition:filter .15s,transform .15s}
+  .btn:hover{filter:brightness(1.2);transform:translateY(-1px)}
   .btn.pri{background:linear-gradient(90deg,#2f7bff,#7a4dff)}
   .btn.grn{background:linear-gradient(90deg,#159957,#1f8f6e)}
   .btn.gld{background:linear-gradient(90deg,#a06a1f,#c98f2e)}
@@ -67,7 +72,11 @@
   #menuLeft .mbtn{width:100%;box-sizing:border-box;text-align:left;padding:9px 13px;display:flex;justify-content:space-between;align-items:baseline}
   #menuLeft .mbtn .mt{margin:0}
   #menuCenter{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0;position:relative}
-  #menuCv{width:min(400px,100%);height:460px;filter:drop-shadow(0 22px 30px rgba(0,0,0,.5))}
+  #menuCenter::before{content:'';position:absolute;left:50%;bottom:8px;width:min(430px,96%);height:88%;
+    transform:translateX(-50%);pointer-events:none;
+    background:radial-gradient(ellipse 46% 42% at 50% 46%,rgba(90,150,255,.13),transparent 70%),
+               radial-gradient(ellipse 40% 10% at 50% 96%,rgba(61,214,195,.18),transparent 70%)}
+  #menuCv{width:min(400px,100%);height:400px;position:relative;filter:drop-shadow(0 22px 30px rgba(0,0,0,.5))}
   #prevName{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap;
     background:rgba(10,14,20,.72);border:1px solid rgba(255,255,255,.12);padding:7px 22px;
     clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
@@ -76,14 +85,24 @@
   #prevName span{margin-left:12px;font-size:13px;font-weight:700}
   #prevName em{font-style:normal;color:#c9b675;margin-left:10px;font-size:11px;letter-spacing:.1em}
   #menuRight{width:236px;flex-shrink:0}
-  #menuTabs{display:flex;gap:10px;margin:16px 0 0;width:min(1020px,96vw)}
+  #menuTabs{display:flex;gap:10px;margin:12px 0 0;width:min(1020px,96vw)}
   .mtab{flex:1;text-align:center;padding:11px 0;font-weight:800;letter-spacing:.4em;font-size:15px;color:#8ea3c4;cursor:pointer;
     background:rgba(12,16,24,.82);border:1px solid rgba(255,255,255,.1);transition:all .15s;
     clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
   .mtab:hover{color:#fff}
+  .mtab .mti{margin-right:10px;letter-spacing:0;font-size:14px;opacity:.85}
   .mtab.sel{background:linear-gradient(100deg,rgba(255,70,85,.28),rgba(61,214,195,.18));color:#fff;border-color:#ff4655}
-  #menuPanes{width:min(1020px,96vw);box-sizing:border-box;min-height:132px;margin-top:8px;display:flex;align-items:center;justify-content:center}
-  #paneHero,#paneChar,#paneSkin{width:100%}
+  #menuPanes{width:min(1020px,96vw);box-sizing:border-box;min-height:120px;margin-top:8px;display:flex;align-items:center;justify-content:center}
+  #paneHero,#paneChar,#paneSkin{width:100%;animation:mpin .28s ease}
+  @keyframes mpin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  /* 分頁內卡片一列排滿，免捲動 */
+  #paneHero #heroRow,#paneChar #charRow{max-width:none}
+  #paneChar .cbtn{width:72px;padding:7px 3px}
+  #paneChar .cbtn .g{font-size:23px}
+  .hbtn:hover:not(.sel),.sbtn:hover:not(.sel),.cbtn:hover:not(.sel){transform:translateY(-2px);
+    border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.08)}
+  #menuLeft .mbtn:hover:not(.sel){transform:translateX(3px);border-color:rgba(255,255,255,.4)}
+  #menuLeft .mbtn.sel{border-left:3px solid #ff4655}
   @media (max-width:900px){
     #menuMain{flex-direction:column;align-items:stretch}
     #menuLeft{width:auto}
@@ -344,7 +363,7 @@
       <div class="pickdesc" id="modeDesc"></div>
     </div>
     <div id="menuCenter">
-      <canvas id="menuCv" width="400" height="460"></canvas>
+      <canvas id="menuCv" width="400" height="400"></canvas>
       <div id="prevName"></div>
     </div>
     <div id="menuRight" class="mpanel">
@@ -365,9 +384,9 @@
     </div>
   </div>
   <div id="menuTabs">
-    <div class="mtab sel" data-tab="hero">角 色</div>
-    <div class="mtab" data-tab="char">元 素</div>
-    <div class="mtab" data-tab="skin">槍 械</div>
+    <div class="mtab sel" data-tab="hero"><span class="mti">👤</span>角 色</div>
+    <div class="mtab" data-tab="char"><span class="mti">☯</span>元 素</div>
+    <div class="mtab" data-tab="skin"><span class="mti">🔫</span>槍 械</div>
   </div>
   <div id="menuPanes" class="mpanel">
     <div id="paneHero"><div id="heroRow"></div><div class="pickdesc" id="heroDesc"></div></div>

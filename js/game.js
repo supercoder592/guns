@@ -86,11 +86,11 @@ const SKINS = [
 ];
 /* 作戰模式（全部 5 分鐘內速戰速決） */
 const MODES = [
-  { id:'tdm',      name:'極速死鬥', min:5, desc:'5 分鐘團隊死鬥，擊殺多者勝' },
-  { id:'elim',     name:'一命殲滅', min:3, desc:'不重生！先殲滅敵隊全員者勝' },
-  { id:'hs',       name:'爆頭對決', min:5, desc:'只有爆頭有完整傷害（身體僅 15%）' },
-  { id:'roulette', name:'屬性輪盤', min:5, desc:'每次重生隨機更換屬性' },
-  { id:'sniper',   name:'狙神競賽', min:4, desc:'全員鎖定狙擊槍，一槍定勝負' },
+  { id:'tdm',      name:'極速死鬥', icon:'⚔️', min:5, desc:'5 分鐘團隊死鬥，擊殺多者勝' },
+  { id:'elim',     name:'一命殲滅', icon:'💀', min:3, desc:'不重生！先殲滅敵隊全員者勝' },
+  { id:'hs',       name:'爆頭對決', icon:'🎯', min:5, desc:'只有爆頭有完整傷害（身體僅 15%）' },
+  { id:'roulette', name:'屬性輪盤', icon:'🎲', min:5, desc:'每次重生隨機更換屬性' },
+  { id:'sniper',   name:'狙神競賽', icon:'🔭', min:4, desc:'全員鎖定狙擊槍，一槍定勝負' },
 ];
 let gameMode = 'tdm';
 const modeOf = id => MODES.find(m=>m.id===id) || MODES[0];
@@ -459,7 +459,7 @@ function buildModeRow(container){
     b.className = 'mbtn'+(m.id===selMode?' sel':'');
     b.dataset.mi = m.id;
     b.title = m.desc;
-    b.innerHTML = `<div class="mn">${m.name}</div><div class="mt">${m.min} 分鐘</div>`;
+    b.innerHTML = `<div class="mn">${m.icon?m.icon+' ':''}${m.name}</div><div class="mt">${m.min} 分鐘</div>`;
     b.onclick = ()=> pickMode(m.id);
     container.appendChild(b);
   });
