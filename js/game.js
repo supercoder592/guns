@@ -73,15 +73,15 @@ const HEROES = [
 const SKINS = [
   { name:'經典戰術', fx:null,    fxd:'標準軍規塗裝',
     body:0x23272d, dark:0x363c45, steel:0x8b939c, wood:0,        glow:0 },
-  { name:'曜金龍紋', fx:'gold',  fxd:'龍脊鰭刃‧鎏金閃輝',
+  { name:'曜金龍紋', fx:'gold',  fxd:'金龍纏槍‧龍首吞口',
     body:0x3a3320, dark:0x6b5a26, steel:0xd9b64a, wood:0xc9a24a, glow:0xffd45e },
-  { name:'緋獄魔燄', fx:'ember', fxd:'熔岩魔紋‧餘燼飄升',
+  { name:'緋獄魔燄', fx:'ember', fxd:'魔顎獠牙‧熔核脈動',
     body:0x2a1216, dark:0x5c2028, steel:0xc4485c, wood:0x8a2432, glow:0xff4655 },
-  { name:'寒霜冰晶', fx:'frost', fxd:'冰晶結晶‧寒霧繚繞',
+  { name:'寒霜冰晶', fx:'frost', fxd:'整槍冰封‧冰錐星芒',
     body:0x1c2a38, dark:0x2e4a60, steel:0x9fd8f0, wood:0x5c7f9a, glow:0x9fd8f0 },
-  { name:'翡翠靈蛇', fx:'jade',  fxd:'靈蛇玉環‧翠光流轉',
+  { name:'翡翠靈蛇', fx:'jade',  fxd:'靈蛇盤槍‧昂首吐信',
     body:0x16302a, dark:0x1f4a3e, steel:0x4ec9a5, wood:0x2e6b54, glow:0x4ec9a5 },
-  { name:'夜紫雷髓', fx:'volt',  fxd:'雷髓線圈‧電弧竄流',
+  { name:'夜紫雷髓', fx:'volt',  fxd:'磁軌雙叉‧雷核電弧',
     body:0x241c33, dark:0x39284f, steel:0x9a6bff, wood:0x5a3d80, glow:0xa06bff },
 ];
 /* 作戰模式（全部 5 分鐘內速戰速決） */
@@ -533,15 +533,36 @@ function buildSoldierMesh(heroI, charI, skinI){
   B(new THREE.BoxGeometry(.1,.26,.11), matSkin, -.1,1.3,.38, -1.4,0,-.6);
   B(new THREE.BoxGeometry(.07,.11,.72), matGun, .1,1.33,.42);      // 槍（槍皮色）
   B(new THREE.BoxGeometry(.05,.15,.07), matGear2, .1,1.23,.4, .25);
-  if (sk.fx){   // 槍皮造型件（展示台靜態版：鰭刃/魔紋/冰晶/玉環/線圈）
+  if (sk.fx){   // 槍皮改造套件（展示台靜態版：龍首/魔顎/冰封/蛇首/磁軌）
     const mFx = new THREE.MeshStandardMaterial({color:sk.steel, emissive:sk.glow||0xffffff,
       emissiveIntensity:1, transparent:true, opacity:.92});
-    for (let i=0;i<3;i++){
-      const z = .24 + i*.17;
-      if (sk.fx==='gold') B(new THREE.ConeGeometry(.02,.06,4), mFx, .1, 1.41, z);
-      else if (sk.fx==='frost') B(new THREE.OctahedronGeometry(.027), mFx, .1+(i%2?.045:-.045), 1.4, z, rand(0,1), rand(0,1));
-      else if (sk.fx==='jade' || sk.fx==='volt') B(new THREE.TorusGeometry(.055,.008,6,14), mFx, .1, 1.33, z);
-      else B(new THREE.BoxGeometry(.006,.022,.07), mFx, .137, 1.33, z);   // ember 魔紋
+    const mFd = new THREE.MeshStandardMaterial({color:sk.dark, metalness:.7, roughness:.35});
+    if (sk.fx==='gold'){                    // 龍首吞槍口＋龍脊鰭刃
+      B(new THREE.BoxGeometry(.1,.08,.13), mFx, .1, 1.34, .74);
+      B(new THREE.ConeGeometry(.02,.08,4), mFd, .07, 1.41, .7, 2.1);
+      B(new THREE.ConeGeometry(.02,.08,4), mFd, .13, 1.41, .7, 2.1);
+      for (let i=0;i<3;i++) B(new THREE.ConeGeometry(.022,.08,4), mFx, .1, 1.42, .2+i*.17, .25);
+    } else if (sk.fx==='ember'){            // 魔顎獠牙環＋魔角
+      for (let i=0;i<4;i++){ const a = i/4*Math.PI*2+.4;
+        B(new THREE.ConeGeometry(.014,.07,4), mFd, .1+Math.cos(a)*.045, 1.33+Math.sin(a)*.045, .78, Math.PI/2); }
+      B(new THREE.SphereGeometry(.026,8,8), mFx, .1, 1.33, .74);
+      for (let i=0;i<2;i++) B(new THREE.ConeGeometry(.02,.09,4), mFd, .1, 1.42, .22+i*.2, .6);
+    } else if (sk.fx==='frost'){            // 整槍冰封＋冰錐冠
+      for (let i=0;i<3;i++){ const a = i/3*Math.PI*2;
+        B(new THREE.ConeGeometry(.015,.09,5), mFx, .1+Math.cos(a)*.04, 1.33+Math.sin(a)*.04, .8, Math.PI/2); }
+      B(new THREE.ConeGeometry(.026,.12,5), mFx, .1, 1.45, .2, .35);
+      for (let i=0;i<3;i++) B(new THREE.OctahedronGeometry(.03-.004*i), mFx, .1+(i%2?.045:-.045), 1.4, .3+i*.16, rand(0,1), rand(0,1));
+    } else if (sk.fx==='jade'){             // 蛇首昂於槍口＋蛇身纏繞
+      B(new THREE.BoxGeometry(.06,.045,.1), mFx, .1, 1.44, .76, .3);
+      B(new THREE.BoxGeometry(.075,.015,.07), mFx, .1, 1.42, .72, .3);
+      for (let i=0;i<4;i++) B(new THREE.TorusGeometry(.055,.014,7,14,Math.PI*1.35), i%2?mFx:mFd, .1, 1.33, .2+i*.15, 0, 0, i*1.2);
+    } else {                                // volt：磁軌雙叉＋能量核
+      B(new THREE.BoxGeometry(.016,.032,.26), mFd, .066, 1.35, .82);
+      B(new THREE.BoxGeometry(.016,.032,.26), mFd, .134, 1.35, .82);
+      B(new THREE.BoxGeometry(.009,.018,.24), mFx, .066, 1.35, .81);
+      B(new THREE.BoxGeometry(.009,.018,.24), mFx, .134, 1.35, .81);
+      B(new THREE.CylinderGeometry(.02,.02,.09,10), mFx, .1, 1.42, .2, 0, 0, Math.PI/2);
+      for (let i=0;i<2;i++) B(new THREE.TorusGeometry(.048,.008,4,10), mFx, .1, 1.33, .34+i*.16);
     }
   }
   B(new THREE.CylinderGeometry(.06,.075,.09,8), matSkin, 0,1.57,0);
@@ -2549,80 +2570,151 @@ function rebuildViewmodel(){
   if (flashLight) flashLight.color.set(e.color);
 }
 
-/* ---------- 槍皮造型件與動態特效：每款皮有專屬配件與持續演出，不只是換色 ---------- */
+/* ---------- 槍皮整槍改造套件：不受原槍造型限制，每款皮重塑輪廓＋持續動態演出 ---------- */
 function addSkinDecor(sk, len){
   const F = [];
   viewmodel.userData.skinFX = F;
   if (!sk.fx) return;
-  const zs = [-0.16, -0.3, -0.44].map(z=> Math.max(z, -len-0.05));   // 沿槍身的三個裝飾節點
+  const zm = -(len + .02);                       // 槍口改裝件中心
+  const z0 = len > .7 ? -.36 : -.13;             // 槍頂脊飾起點（狙擊鏡後方避開鏡組）
   const add = (mesh, x,y,z, rx=0,ry=0,rz=0)=>{ mesh.position.set(x,y,z); mesh.rotation.set(rx,ry,rz);
     viewmodel.add(mesh); return mesh; };
   const spr = (color, s)=>{ const p = new THREE.Sprite(new THREE.SpriteMaterial({map:TEX.spark, color,
       transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
     p.scale.set(s, s, 1); viewmodel.add(p); return p; };
-  if (sk.fx==='gold'){          // 曜金龍紋：龍脊鰭刃＋鎏金閃輝沿槍身滑動
-    const mFin = new THREE.MeshStandardMaterial({color:0xffd45e, emissive:0xb98a1f, emissiveIntensity:.5, metalness:.9, roughness:.2});
-    zs.forEach((z,i)=> add(new THREE.Mesh(new THREE.ConeGeometry(.02, .075-.015*i, 4), mFin), 0, .1, z));
-    const glint = spr(0xffe9a0, .16);
+  const spine = (n, mk)=>{ for (let i=0;i<n;i++) mk(z0 + (zm+.12-z0)*(i/(n-1||1)), i, i/(n-1||1)); };
+
+  if (sk.fx==='gold'){          // 曜金龍紋 → 金龍纏槍：龍首吞槍口、龍脊鰭刃、龍尾翹起
+    const mG  = new THREE.MeshStandardMaterial({color:0xffd45e, emissive:0xb9821f, emissiveIntensity:.45, metalness:.95, roughness:.18});
+    const mGd = new THREE.MeshStandardMaterial({color:0x8a6a1c, metalness:.85, roughness:.3});
+    const mEye= new THREE.MeshStandardMaterial({color:0xff5a2a, emissive:0xff4400, emissiveIntensity:2});
+    add(new THREE.Mesh(new THREE.BoxGeometry(.082,.06,.14), mG), 0, .048, zm);            // 龍首吻部（吞住槍管）
+    add(new THREE.Mesh(new THREE.BoxGeometry(.066,.02,.115), mGd), 0, .006, zm-.015, .38);// 張開的下顎
+    add(new THREE.Mesh(new THREE.ConeGeometry(.008,.028,4), mGd), .024,.014, zm-.06, Math.PI); // 獠牙
+    add(new THREE.Mesh(new THREE.ConeGeometry(.008,.028,4), mGd), -.024,.014, zm-.06, Math.PI);
+    add(new THREE.Mesh(new THREE.ConeGeometry(.024,.08,4), mG), 0, .1, zm+.05, -.5);      // 頭頂冠角
+    add(new THREE.Mesh(new THREE.ConeGeometry(.012,.07,4), mGd), .034,.095, zm+.07, -2.1, 0, .4);  // 後掠雙角
+    add(new THREE.Mesh(new THREE.ConeGeometry(.012,.07,4), mGd), -.034,.095, zm+.07, -2.1, 0, -.4);
+    const eyeL = add(new THREE.Mesh(new THREE.SphereGeometry(.013,8,8), mEye),  .045,.062, zm+.03);
+    const eyeR = add(new THREE.Mesh(new THREE.SphereGeometry(.013,8,8), mEye), -.045,.062, zm+.03);
+    spine(5, (z,i)=> add(new THREE.Mesh(new THREE.ConeGeometry(.021,.095-.012*i,4), mG), 0, .1, z, -.25)); // 龍脊鰭刃
+    for (const s of [-1,1]) for (let i=0;i<3;i++)                                          // 側身龍鱗
+      add(new THREE.Mesh(new THREE.BoxGeometry(.006,.034,.05), mGd), s*.036, .028, z0-.04 + (zm+.16-z0)*(i/2.5), .0,0,s*.4);
+    add(new THREE.Mesh(new THREE.ConeGeometry(.018,.11,4), mG), 0, .075, .045, -2.5);      // 龍尾（槍尾上翹）
+    const glint = spr(0xffe9a0, .17), breath = spr(0xffc36a, .12);
+    breath.position.set(0, .04, zm-.1);
     F.push(dt=>{
       const k = (now()*.7)%1;
-      glint.position.set(0, .085, -.1 - k*(len*.95));
+      glint.position.set(0, .1, -.1 - k*(len*.95));
       glint.material.opacity = Math.sin(k*Math.PI)*.95;
       glint.material.rotation += dt*3;
+      breath.material.opacity = .3 + Math.sin(now()*6)*.18;          // 口中吐息
+      eyeL.material.emissiveIntensity = eyeR.material.emissiveIntensity = 1.6 + Math.sin(now()*3)*.7;
     });
-  } else if (sk.fx==='ember'){  // 緋獄魔燄：熔岩魔紋呼吸＋餘燼飄升
-    const mRune = new THREE.MeshStandardMaterial({color:0xff4655, emissive:0xff2233, emissiveIntensity:1.4});
-    zs.forEach(z=>{
-      add(new THREE.Mesh(new THREE.BoxGeometry(.005,.022,.07), mRune),  .033, .03, z);
-      add(new THREE.Mesh(new THREE.BoxGeometry(.005,.022,.07), mRune), -.033, .03, z);
-    });
-    const embers = zs.map(z=>{ const e2 = spr(0xff7a45, .05);
-      e2.position.set(rand(-.02,.02), .05, z); e2.userData = {z0:z, ph:Math.random()}; return e2; });
+  } else if (sk.fx==='ember'){  // 緋獄魔燄 → 魔顎兇槍：槍口獠牙魔顎、背脊魔角、熔岩裂紋
+    const mObs = new THREE.MeshStandardMaterial({color:0x1c0d12, metalness:.7, roughness:.35});
+    const mLava= new THREE.MeshStandardMaterial({color:0xff4655, emissive:0xff2233, emissiveIntensity:1.5});
+    for (let i=0;i<5;i++){ const a = i/5*Math.PI*2 + .3;                                   // 槍口環狀獠牙（魔顎）
+      add(new THREE.Mesh(new THREE.ConeGeometry(.012,.06,4), mObs),
+        Math.cos(a)*.038, .04+Math.sin(a)*.038, zm-.03, -Math.PI/2, 0, 0); }
+    const maw = add(new THREE.Mesh(new THREE.SphereGeometry(.024,8,8), mLava), 0, .04, zm+.01); // 顎心熔核
+    spine(3, (z,i)=> add(new THREE.Mesh(new THREE.ConeGeometry(.02,.1-.018*i,4), mObs), 0, .1, z, -.6, 0, (i%2?.25:-.25))); // 魔角
+    for (const s of [-1,1]) for (let i=0;i<3;i++)                                          // 熔岩裂紋
+      add(new THREE.Mesh(new THREE.BoxGeometry(.006,.03,.11), mLava), s*.035, .03, z0-.02 + (zm+.2-z0)*(i/2.5), 0,0,s*.2);
+    for (let i=0;i<3;i++)                                                                  // 腹下肋刃
+      add(new THREE.Mesh(new THREE.ConeGeometry(.011,.05,4), mObs), 0, -.03, z0-.06 + (zm+.22-z0)*(i/2.5), Math.PI-.4);
+    const embers = [0,1,2].map(i=>{ const e2 = spr(0xff7a45, .05);
+      e2.userData = {z0:z0-.05-i*.12, ph:Math.random()}; return e2; });
     F.push(dt=>{
       for (const e2 of embers){
         e2.userData.ph += dt*.9;
         if (e2.userData.ph > 1){ e2.userData.ph = 0; e2.position.x = rand(-.03,.03); }
-        e2.position.y = .05 + e2.userData.ph*.11;
-        e2.position.z = e2.userData.z0;
+        e2.position.set(e2.position.x, .06 + e2.userData.ph*.12, e2.userData.z0);
         e2.material.opacity = 1 - e2.userData.ph;
       }
-      mRune.emissiveIntensity = 1.1 + Math.sin(now()*5)*.5;
+      mLava.emissiveIntensity = 1.2 + Math.sin(now()*5)*.6 + Math.random()*.25;            // 熔紋＋熔核同步脈動
+      maw.scale.setScalar(1 + Math.sin(now()*5)*.15);
     });
-  } else if (sk.fx==='frost'){  // 寒霜冰晶：槍身結晶＋寒霧呼吸
-    const mIce = new THREE.MeshStandardMaterial({color:0xdff4ff, emissive:0x9fd8f0, emissiveIntensity:.55,
-      transparent:true, opacity:.85, roughness:.1});
-    zs.forEach((z,i)=>{
-      add(new THREE.Mesh(new THREE.OctahedronGeometry(.03-.004*i), mIce),  .042, .06, z, rand(0,1), rand(0,1));
-      add(new THREE.Mesh(new THREE.OctahedronGeometry(.022), mIce), -.038, .045, z-.05, rand(0,1));
+  } else if (sk.fx==='frost'){  // 寒霜冰晶 → 整槍冰封：冰晶簇、垂掛冰柱、槍口冰錐冠
+    const mIce = new THREE.MeshStandardMaterial({color:0xdff4ff, emissive:0x9fd8f0, emissiveIntensity:.5,
+      transparent:true, opacity:.82, roughness:.05, metalness:.1});
+    for (let i=0;i<3;i++){ const a = i/3*Math.PI*2;                                        // 槍口冰錐冠（前指）
+      add(new THREE.Mesh(new THREE.ConeGeometry(.014,.09,5), mIce),
+        Math.cos(a)*.034, .04+Math.sin(a)*.034, zm-.04, -Math.PI/2, 0, 0); }
+    add(new THREE.Mesh(new THREE.ConeGeometry(.028,.15,5), mIce), 0, .125, z0-.02, -.35);  // 機匣頂主冰峰
+    add(new THREE.Mesh(new THREE.ConeGeometry(.02,.1,5), mIce), .035, .1, z0-.06, -.2, 0, .45);   // 側冰峰
+    add(new THREE.Mesh(new THREE.ConeGeometry(.017,.08,5), mIce), -.035, .09, z0+.02, -.15, 0, -.5);
+    add(new THREE.Mesh(new THREE.OctahedronGeometry(.048), mIce), .045, .075, z0-.05, .5, .3);
+    add(new THREE.Mesh(new THREE.OctahedronGeometry(.036), mIce), -.048, .06, z0-.1, .2, .8);
+    spine(4, (z,i)=>{                                                                      // 槍管冰稜脊＋晶簇
+      add(new THREE.Mesh(new THREE.ConeGeometry(.014,.07-.008*i,5), mIce), 0, .09, z, -.3);
+      add(new THREE.Mesh(new THREE.OctahedronGeometry(.032-.004*i), mIce), (i%2? .045:-.045), .06, z, rand(0,1), rand(0,1));
     });
-    const mist = spr(0xbfeaff, .24); mist.position.set(0, .05, -.3);
+    for (let i=0;i<4;i++)                                                                  // 槍腹垂掛冰柱
+      add(new THREE.Mesh(new THREE.ConeGeometry(.008,.05+(i%2)*.02,5), mIce), rand(-.02,.02), -.035, z0-.08 + (zm+.24-z0)*(i/3.5), Math.PI);
+    const mist = spr(0xbfeaff, .26); mist.position.set(0, .05, (z0+zm)/2);
+    const tw1 = spr(0xffffff, .05), tw2 = spr(0xdff4ff, .04);
+    tw1.material.opacity = 0; tw2.material.opacity = 0;
     F.push(dt=>{
       mist.material.opacity = .16 + Math.sin(now()*1.8)*.1;
       mist.material.rotation += dt*.4;
+      if (Math.random() < .06){ tw1.position.set(rand(-.05,.05), rand(0,.11), rand(zm, z0)); tw1.material.opacity = 1; }
+      else tw1.material.opacity *= .86;                                                    // 冰晶隨機閃爍星芒
+      if (Math.random() < .05){ tw2.position.set(rand(-.05,.05), rand(-.03,.1), rand(zm, z0)); tw2.material.opacity = .9; }
+      else tw2.material.opacity *= .88;
     });
-  } else if (sk.fx==='jade'){   // 翡翠靈蛇：玉環纏繞緩轉＋起伏
-    const mJ = new THREE.MeshStandardMaterial({color:0x4ec9a5, emissive:0x1f8a6a, emissiveIntensity:.8,
-      transparent:true, opacity:.88, roughness:.25});
-    const rings = zs.map(z=> add(new THREE.Mesh(new THREE.TorusGeometry(.05,.008,6,16), mJ), 0, .03, z));
+  } else if (sk.fx==='jade'){   // 翡翠靈蛇 → 靈蛇盤槍：蛇首昂於槍口、蛇身節節纏繞、吐信遊走
+    const mJ  = new THREE.MeshStandardMaterial({color:0x4ec9a5, emissive:0x1f8a6a, emissiveIntensity:.7, roughness:.25, metalness:.4});
+    const mJd = new THREE.MeshStandardMaterial({color:0x21584a, roughness:.4, metalness:.3});
+    const mEye= new THREE.MeshStandardMaterial({color:0xff3344, emissive:0xff2233, emissiveIntensity:2});
+    const head = new THREE.Group();                                                        // 蛇首（昂起於槍口上方）
+    const hAdd = (g2,m2,x,y,z,rx=0)=>{ const ms = new THREE.Mesh(g2,m2); ms.position.set(x,y,z); ms.rotation.x = rx; head.add(ms); return ms; };
+    hAdd(new THREE.BoxGeometry(.05,.038,.07), mJ, 0, 0, -.01);                             // 頭
+    hAdd(new THREE.BoxGeometry(.034,.026,.05), mJ, 0, -.004, -.06);                        // 收窄吻部
+    hAdd(new THREE.BoxGeometry(.08,.014,.06), mJd, 0, -.006, .03);                         // 頸盾
+    hAdd(new THREE.SphereGeometry(.011,8,8), mEye, .026, .015, -.045);
+    hAdd(new THREE.SphereGeometry(.011,8,8), mEye, -.026, .015, -.045);
+    const tongue = hAdd(new THREE.BoxGeometry(.006,.004,.06), mEye, 0, -.008, -.1);        // 吐信
+    head.position.set(0, .1, zm+.02); head.rotation.x = .25;
+    viewmodel.add(head);
+    const coils = [];                                                                      // 蛇身：半環節節纏繞槍身
+    for (let i=0;i<5;i++){ const z = z0 - .02 + (zm+.16-z0)*(i/4.5);
+      const c2 = add(new THREE.Mesh(new THREE.TorusGeometry(.05,.013,7,14,Math.PI*1.35), i%2?mJ:mJd),
+        0, .03, z, 0, 0, i*1.25); c2.userData = {ph:i*1.1}; coils.push(c2); }
+    add(new THREE.Mesh(new THREE.ConeGeometry(.012,.1,6), mJ), .03, .05, .05, -2.4, 0, .5);// 蛇尾（槍尾捲出）
     F.push(dt=>{
-      rings.forEach((r2,i)=>{
-        r2.rotation.z += dt*(1.4 + i*.6);
-        r2.position.y = .03 + Math.sin(now()*2 + i*2.1)*.008;
-      });
+      for (const c2 of coils){ c2.rotation.z += dt*.9; c2.position.y = .03 + Math.sin(now()*2.4 + c2.userData.ph)*.01; } // 蛇身蠕動
+      head.position.y = .1 + Math.sin(now()*2.2)*.012;                                     // 蛇首緩緩昂伏
+      head.rotation.y = Math.sin(now()*1.3)*.22;
+      tongue.scale.z = Math.random()<.05 ? 1.8 : Math.max(.4, tongue.scale.z*.9);          // 隨機吐信
     });
-  } else if (sk.fx==='volt'){   // 夜紫雷髓：雷髓線圈＋電弧亂竄
-    const mCoil = new THREE.MeshStandardMaterial({color:0x9a6bff, emissive:0x7a3bff, emissiveIntensity:1.2});
-    zs.forEach(z=> add(new THREE.Mesh(new THREE.TorusGeometry(.045,.006,4,10), mCoil), 0, .03, z, 0, 0, rand(0,1)));
-    const sp1 = spr(0xd8b4ff, .09), sp2 = spr(0xffffff, .055);
+  } else if (sk.fx==='volt'){   // 夜紫雷髓 → 磁軌炮改裝：雙磁軌前叉、雷髓能量核、電弧亂竄
+    const mTech = new THREE.MeshStandardMaterial({color:0x2a2040, metalness:.8, roughness:.3});
+    const mRail = new THREE.MeshStandardMaterial({color:0x9a6bff, emissive:0x7a3bff, emissiveIntensity:1.1, metalness:.7, roughness:.25});
+    const mCore = new THREE.MeshStandardMaterial({color:0xd8b4ff, emissive:0xa06bff, emissiveIntensity:1.8, transparent:true, opacity:.92});
+    for (const s of [-1,1]){                                                               // 磁軌雙叉（伸出槍口）
+      add(new THREE.Mesh(new THREE.BoxGeometry(.014,.03,.24), mTech), s*.032, .045, zm-.05);
+      add(new THREE.Mesh(new THREE.BoxGeometry(.008,.016,.22), mRail), s*.032, .045, zm-.06);
+      add(new THREE.Mesh(new THREE.BoxGeometry(.008,.05,.14), mTech), s*.04, .02, z0-.1, 0, 0, s*.3); // 側裝甲斜板
+    }
+    const core = add(new THREE.Mesh(new THREE.CylinderGeometry(.02,.02,.09,10), mCore), 0, .085, z0-.05, 0, 0, Math.PI/2); // 雷髓能量核（橫置）
+    add(new THREE.Mesh(new THREE.BoxGeometry(.06,.02,.11), mTech), 0, .085, z0-.05);       // 核座
+    const coils = [0,1].map(i=> add(new THREE.Mesh(new THREE.TorusGeometry(.042,.007,4,10), mRail),
+      0, .03, z0-.16-(i?.14:0), 0, 0, rand(0,1)));
+    const sp1 = spr(0xd8b4ff, .1), sp2 = spr(0xffffff, .06), tip = spr(0xb48aff, .09);
     sp1.material.opacity = 0; sp2.material.opacity = 0;
+    tip.position.set(0, .045, zm-.17);                                                     // 軌端聚能光點
     F.push(dt=>{
       if (Math.random() < .22){
-        sp1.position.set(rand(-.035,.035), .03 + rand(0,.05), zs[Math.floor(Math.random()*zs.length)] + rand(-.05,.05));
+        sp1.position.set(rand(-.04,.04), .03 + rand(0,.06), rand(zm, z0));
         sp1.material.opacity = rand(.5,1);
       } else sp1.material.opacity *= .7;
       if (Math.random() < .12){ sp2.position.copy(sp1.position); sp2.material.opacity = 1; }
       else sp2.material.opacity *= .55;
-      mCoil.emissiveIntensity = 1 + Math.random()*.8;
+      mRail.emissiveIntensity = 1 + Math.random()*.8;
+      core.material.emissiveIntensity = 1.5 + Math.sin(now()*7)*.6;
+      core.rotation.x += dt*4;                                                             // 能量核旋轉
+      tip.material.opacity = .35 + Math.random()*.4;
     });
   }
 }
